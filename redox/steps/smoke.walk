@@ -1,0 +1,37 @@
+# DOES THE PUBLISHED DISK START? Boot it, look, and kill it - nothing else.
+#
+# "THE INSTALL LEG PASSED" IS NOT THE SAME CLAIM. An install can answer every one of its steps and
+# still publish a disk no firmware will boot, so this file asks only whether the machine gets off the
+# ground. Its artifact is the recording.
+#
+# REDOX OS BOOTS THROUGH UEFI ON x86-64 - its own boot-process chapter says UEFI starts in 64-bit mode
+# and needs no multiple stages - so OVMF and a virtio disk are the whole machine.
+#
+# THE MEDIUM IS AN ISO THAT ARRIVES AS `.iso.zst`, AND THIS FILE NEVER SEES THE COMPRESSION. Redox
+# publishes nothing else, so `artifacts-publish.yml` decompresses it before packing the tar: what a
+# stage pulls is a tar holding an ISO, the same shape every other guest's asset has.
+walkthrough "the published disk starts - nothing else"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+step "boot the published disk"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    timeout 300
+
+# `BdsDxe: starting` IS THE FIRMWARE SAYING IT FOUND SOMETHING BOOTABLE. It is a better witness than
+# any brightness threshold: a disk it cannot start prints the opposite sentence on the same console.
+step "the firmware handed control to the disk"
+  until "BdsDxe: starting"
+  from console
+  timeout 300
+
+# THREE MINUTES OF RECORDING, AND NOTHING IS READ FROM IT. Every guest draws a different boot
+# sequence, so any threshold would either be tuned to one of them or be too loose to fail.
+step "record three minutes of the boot"
+  settle 180
+
+step "stop the machine"
+  stop kill
+  timeout 120
