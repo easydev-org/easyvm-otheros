@@ -1,0 +1,48 @@
+name: redox-0.9.0-install
+
+# INSTALL REDOX OS ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+#
+# THIS IS THE FIRST STAGE, SO IT HAS NO `pull:`: the disk is created by the walkthrough's `disk:` step
+# and the medium arrives from this repository's ghcr package as `assets:`.
+#
+# THE INSTALLER IMAGE IS MIRRORED, NOT FETCHED FROM THE PUBLISHER. `artifacts-publish.yml` puts it in
+# the package once, with its digest checked; a stage asks the package and nothing upstream.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks and media"
+        default: "easydev-org/easyvm-redoxos"
+
+concurrency:
+  group: redox-0.9.0-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  install:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: redox-0.9.0-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "redox-install",
+            "file": "redox/steps/install.walk",
+            "pull": "",
+            "assets": ["iso-redox-0.9.0-desktop:redox_desktop_x86_64_2024-09-07_1225_livedisk.iso.zst.tar"],
+            "out": "redox-install.qcow2",
+            "publish": "redox-install",
+            "timeout": 90
+          }
+        ]
