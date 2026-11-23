@@ -5,7 +5,30 @@
 # ground. Its artifact is the recording.
 #
 # REDOX OS BOOTS THROUGH UEFI ON x86-64 - its own boot-process chapter says UEFI starts in 64-bit mode
-# and needs no multiple stages - so OVMF and a virtio disk are the whole machine.
+# and needs no multiple stages - so OVMF and a disk are the whole machine.
+#
+# THE DISK IS AHCI, NOT VIRTIO-BLK, AND THAT IS MEASURED RATHER THAN PREFERRED. Redox's virtio-blk
+# appears under /scheme as an EMPTY directory while an AHCI disk is a working device node:
+#
+#	/scheme/disk.pci-00-00-04.0_ahci        -> opens, 20.00 GiB
+#	/scheme/disk.pci-00-00-04.0_virtio_blk  -> listed, nothing beneath it
+#
+# so a virtual machine whose target is virtio-blk hands Redox a disk it cannot read. The same
+# difference is what the installer sees: with virtio-blk it reports "no drives found", and with AHCI
+# it lists the drive and writes a GPT.
+#
+# THE NETWORK IS QEMU'S OWN SLIRP (`-netdev user`), NOT THE LEGAPP TAP. Redox keeps its network
+# settings as three plain files and this live image ships them filled with SLIRP's defaults:
+#
+#	/etc/net/ip        10.0.2.15
+#	/etc/net/ip_router 10.0.2.2
+#	/etc/net/dns       208.67.222.222
+#
+# 10.0.2.15 and 10.0.2.2 are QEMU's user-mode addresses, so a tap-bridged guest gets a machine with
+# no route at all - MEASURED: without this change /scheme/net does not exist, there is no `ip` or
+# `dhcpcd`, and there is no /etc/resolv.conf, because nothing ever configured the interface. With
+# `-netdev user` the same guest answers `ping 10.0.2.2` in 9 ms and `curl -sI
+# https://static.redox-os.org/pkg/` with HTTP/2 200, which is what an install leg needs.
 #
 # THE MEDIUM IS AN ISO THAT ARRIVES AS `.iso.zst`, AND THIS FILE NEVER SEES THE COMPRESSION. Redox
 # publishes nothing else, so `artifacts-publish.yml` decompresses it before packing the tar: what a
@@ -17,7 +40,7 @@ recording_resolution 1920x1080
 step "boot the published disk"
   boot
     machine "q35,accel=kvm,vmport=off"
-    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file={{disk}},if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file={{disk}},if=none,format=qcow2,discard=unmap,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
     timeout 300
 
 # `BdsDxe: starting` IS THE FIRMWARE SAYING IT FOUND SOMETHING BOOTABLE. It is a better witness than
