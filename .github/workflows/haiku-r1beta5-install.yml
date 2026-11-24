@@ -24,6 +24,17 @@ name: haiku-r1beta5-install
 # THE MEDIUM IS PULLED, NOT DOWNLOADED BY THE WALK: `assets:` names `iso-haiku-r1beta5` and the name
 # it arrives as is `haiku.iso`, which is what the walk's `-drive file=haiku.iso` says.
 #
+# THE NAME ENDS IN `.tar` AND THAT IS NOT DECORATION. `stage.yml` unpacks an asset only when its
+# destination ends in `.tar` - "every published asset is one tar" - and a name without it stops the
+# leg before the machine starts:
+#
+#	[error] .../work/haiku.iso is not a tar. Every published asset is one.
+#
+# MEASURED on run 45418713576, which is what put the suffix here. The tar's single member is
+# `haiku-r1beta5-x86_64-anyboot.iso`; unpacking renames it to the name minus `.tar`, so the walk asks
+# for `haiku.iso` and finds it.
+
+#
 # IT PUBLISHES `haiku-install`, the tag the smoke leg pulls.
 #
 # PARALLEL TO REDOX'S SPLIT, AND FOR THE SAME REASON. `iso-haiku-r1beta5` is a fact about the MEDIUM;
@@ -60,7 +71,7 @@ jobs:
           {
             "name": "haiku-install",
             "file": "haiku/steps/install.walk",
-            "assets": ["iso-haiku-r1beta5:haiku.iso"],
+            "assets": ["iso-haiku-r1beta5:haiku.iso.tar"],
             "pull": "",
             "out": "out/haiku.qcow2",
             "timeout": 45,
