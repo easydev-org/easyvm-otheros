@@ -14,7 +14,7 @@ boot sector, driven step by step:
 ```
 haiku/steps/install.walk      41 steps   DriveSetup: Intel map, BFS, then the Installer
 haiku/steps/smoke.walk         3 steps   boot the published disk, read the deskbar
-reactos/steps/install.walk    27 steps   the Setup Wizard, driven entirely by keyboard
+reactos/steps/install.walk    28 steps   the Setup Wizard, driven entirely by keyboard
 reactos/steps/smoke.walk       3 steps   boot the published disk, read the desktop
 ```
 

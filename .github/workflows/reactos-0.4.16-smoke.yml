@@ -2,8 +2,12 @@ name: reactos-0.4.16-smoke
 
 # DOES THE REACTOS DISK REACH ITS DESKTOP? Boot it with no CD, read the desktop, record it.
 #
-# THIS GUEST'S INSTALL LEG EXISTS AND WORKS - `reactos/steps/install.walk` runs 26 of 27 steps locally
-# - BUT IT CANNOT PUBLISH, AND THE REASON IS AN ENGINE DEFECT RATHER THAN ANYTHING IN THIS REPOSITORY:
+# THIS GUEST'S INSTALL LEG EXISTS AND WORKS IN CI - `reactos-0.4.16-install.yml` runs all 28 steps of
+# `reactos/steps/install.walk` and publishes the disk (run 45496609390) - SO THIS STAGE TESTS WHAT THAT
+# LEG PRODUCED, with no CD attached.
+#
+# THE INSTALL LEG IS A HAND-WRITTEN JOB RATHER THAN A `stage.yml` CALLER, AND THE REASON IS AN ENGINE
+# DEFECT RATHER THAN ANYTHING IN THIS REPOSITORY:
 #
 #   easydev-org/easyvm#9   A complete ReactOS 0.4.16 install is 415 MiB, and the engine refuses to
 #                          publish any disk below 512 MiB. `min_mb` is DECLARED as a field of `stop:`
@@ -12,11 +16,9 @@ name: reactos-0.4.16-smoke
 #                          is always 512 and cannot be lowered from a walkthrough. stage.yml carries a
 #                          second copy of the same 512 MiB check with no override at all.
 #
-# SO THE DISK THIS STAGE PULLS WAS INSTALLED BY THAT SAME WALK AND PUBLISHED BY HAND, under the tag
-# the install leg would have written. That is the same split redox uses from the other direction -
-# `redox-install` is an assembled disk rather than an installed one - and it is honest about the one
-# step a walkthrough cannot currently do. When #9 is fixed the install leg publishes directly and this
-# file's `pull:` needs no change, because the tag is already the one it names.
+# So that job runs the walk and then pushes `work/disk.qcow2` itself with `scripts/publish-disk.py`,
+# which has no floor, under the tag this file's `pull:` names. When #9 is fixed the job loses its push
+# step and nothing here changes, because the tag is already `reactos-install`.
 #
 # THE DISK IS VERIFIED TWICE, WHICH IS WHY PUBLISHING IT BY HAND IS NOT A GUESS:
 #
