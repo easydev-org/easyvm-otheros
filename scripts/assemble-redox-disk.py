@@ -52,6 +52,7 @@ disk.live/0` copies at 206 MB/s and looks right, but the result fails RedoxFS's 
 
 usage: assemble-redox-disk.py <iso> <out.qcow2> [size-gb]
 """
+import os
 import struct
 import subprocess
 import sys
@@ -84,26 +85,33 @@ def main():
     src, out = sys.argv[1], sys.argv[2]
     size_gb = int(sys.argv[3]) if len(sys.argv) > 3 else 20
 
-    iso = open(src, "rb").read()
-    print("iso: %d bytes" % len(iso))
+    # THE ISO IS PEEKED AT, NOT READ WHOLE. It is 576 MiB and only two slices of it are needed; a
+    # `read()` of the lot is another 576 MiB a job with 7 GiB cannot always spare.
+    iso_file = open(src, "rb")
+    iso_size = os.fstat(iso_file.fileno()).st_size
+    print("iso: %d bytes" % iso_size)
+
+    def read_at(offset, length):
+        iso_file.seek(offset)
+        got = iso_file.read(length)
+        if len(got) != length:
+            sys.exit("the ISO is %d bytes; wanted %d at offset %d" % (iso_size, length, offset))
+        return got
 
     # THE ESP, VERBATIM. Its boot sector ends 55 aa, which is the one check that says this is the FAT
     # volume and not some other slice of the ISO.
-    esp = iso[ESP_START * SECTOR:(ESP_START + ESP_SECTORS) * SECTOR]
+    esp = read_at(ESP_START * SECTOR, ESP_SECTORS * SECTOR)
     if esp[510:512] != b"\x55\xaa":
         sys.exit("the ISO's EFI partition at lba %d is not a FAT volume: %r"
                  % (ESP_START, esp[510:512]))
 
-    # THE PAYLOAD, VERBATIM, from lba 4096 to the last sector the ISO's own GPT covered.
-    hdr = iso[512:512 + 92]
+    # THE PAYLOAD'S EXTENT COMES FROM THE ISO'S OWN GPT, so a different release needs no number here.
+    hdr = read_at(512, 92)
     if hdr[:8] != b"EFI PART":
         sys.exit("the ISO is not a GPT disk")
     iso_alt = struct.unpack_from("<Q", hdr, 32)[0]
     redox_sectors = iso_alt - 33 - REDOX_START + 1
-    redox = iso[REDOX_START * SECTOR:REDOX_START * SECTOR + redox_sectors * SECTOR]
-    print("redoxfs: %d bytes from the ISO, sig %r" % (len(redox), redox[:8]))
-    if redox[:8] != b"RedoxFS\x00":
-        sys.exit("the ISO's REDOX partition is not RedoxFS: %r" % redox[:16])
+    print("redoxfs: %d bytes from the ISO" % (redox_sectors * SECTOR))
 
     total = size_gb * 1024
     total_sectors = total * 2048
@@ -134,9 +142,32 @@ def main():
     struct.pack_into("<I", header, 88, zlib.crc32(entries) & 0xFFFFFFFF)
     struct.pack_into("<I", header, 16, zlib.crc32(bytes(header)) & 0xFFFFFFFF)
 
-    raw = bytearray(total * MIB)
+    # THE IMAGE IS STREAMED, NOT BUILT IN MEMORY.
+    #
+    # MEASURED on the first CI run: a `bytearray(total * MIB)` for 20 GiB raised `MemoryError` at
+    # line 137 on a GitHub runner, whose job has about 7 GiB. Nothing about this disk needs the whole
+    # image resident - it is a GPT, two small structures at fixed offsets, and one 573 MiB payload -
+    # so the qcow2 is created first and every piece is written into it at its own offset.
+    subprocess.run(["qemu-img", "create", "-f", "qcow2", out, "%dM" % (total)], check=True)
 
-    # 1. THE PROTECTIVE MBR.
+    def write_at(path, offset, data):
+        """Write `data` at `offset` of the image, through qemu-io so a qcow2 is edited in place.
+
+        THE FORM IS `write -s <file> <offset> <length>`, and the first attempt got it wrong as
+        `write -<offset> <length> <file>`, which qemu-io answered with exit 1 and no message -
+        MEASURED: the image stayed a bare 193K header and the script reported a CalledProcessError
+        naming an argument list rather than a mistake.
+        """
+        with open(tmp_piece, "wb") as f:
+            f.write(data)
+        subprocess.run(["qemu-io", "-f", "qcow2", "-c",
+                        "write -s %s %d %d" % (tmp_piece, offset, len(data)), path],
+                       check=True, stdout=subprocess.DEVNULL)
+
+    tmp_piece = out + ".piece"
+
+    # 1. THE PROTECTIVE MBR. UEFI uses this 0xEE entry to decide the disk holds a GPT at all; with
+    #    LBA 0 all zero the firmware never reads the header at LBA 1.
     pmbr = bytearray(SECTOR)
     pmbr[446 + 1:446 + 4] = b"\x00\x02\x00"
     pmbr[446 + 4] = 0xEE
@@ -144,32 +175,46 @@ def main():
     struct.pack_into("<I", pmbr, 446 + 8, 1)
     struct.pack_into("<I", pmbr, 446 + 12, min(total_sectors - 1, 0xFFFFFFFF))
     pmbr[510:512] = b"\x55\xaa"
-    raw[0:SECTOR] = pmbr
+    write_at(out, 0, bytes(pmbr))
 
-    # 2. THE HEADER AND THE ENTRY TABLE AT THEIR OWN LBAs.
-    raw[1 * SECTOR:1 * SECTOR + len(header)] = header
-    raw[2 * SECTOR:2 * SECTOR + len(entries)] = entries
+    # 2. THE HEADER AND THE ENTRY TABLE, EACH AT THE LBA ITS OWN FIELD NAMES.
+    write_at(out, 1 * SECTOR, bytes(header))
+    write_at(out, 2 * SECTOR, entries)
 
-    # 3. THE BACKUP HEADER AND ITS TABLE.
+    # 3. THE BACKUP HEADER AND ITS TABLE, POINTING BACK THE OTHER WAY.
     backup = bytearray(header)
     struct.pack_into("<Q", backup, 24, total_sectors - 1)
     struct.pack_into("<Q", backup, 32, 1)
     struct.pack_into("<Q", backup, 72, total_sectors - 33)
     struct.pack_into("<I", backup, 16, 0)
     struct.pack_into("<I", backup, 16, zlib.crc32(bytes(backup)) & 0xFFFFFFFF)
-    raw[(total_sectors - 1) * SECTOR:(total_sectors - 1) * SECTOR + len(backup)] = backup
-    raw[(total_sectors - 33) * SECTOR:(total_sectors - 33) * SECTOR + len(entries)] = entries
+    write_at(out, (total_sectors - 1) * SECTOR, bytes(backup))
+    write_at(out, (total_sectors - 33) * SECTOR, entries)
 
-    # 4. THE TWO PAYLOAD PARTITIONS, BOTH FROM THE ISO.
-    raw[ESP_START * SECTOR:ESP_START * SECTOR + len(esp)] = esp
-    raw[REDOX_START * SECTOR:REDOX_START * SECTOR + len(redox)] = redox
+    # 4. THE TWO PAYLOAD PARTITIONS, BOTH COPIED FROM THE ISO. The 573 MiB payload is written in
+    #    chunks so a larger medium would not need more memory either.
+    write_at(out, ESP_START * SECTOR, esp)
+    chunk = 32 * MIB
+    total_payload = redox_sectors * SECTOR
+    for i in range(0, total_payload, chunk):
+        piece = read_at(REDOX_START * SECTOR + i, min(chunk, total_payload - i))
+        write_at(out, REDOX_START * SECTOR + i, piece)
+    # THE PAYLOAD'S IDENTITY IS CHECKED AT ITS FIRST BYTES, after it has been copied, so the check
+    # cannot pass on a slice that was never written.
+    head = read_at(REDOX_START * SECTOR, 8)
+    print("iso payload sig: %r" % head)
+    if head != b"RedoxFS\x00":
+        sys.exit("the ISO's REDOX partition is not RedoxFS: %r" % head)
     print("esp at lba %d, redoxfs at lba %d" % (ESP_START, REDOX_START))
 
-    tmp = out + ".raw"
-    open(tmp, "wb").write(raw)
-    subprocess.run(["qemu-img", "convert", "-f", "raw", "-O", "qcow2", "-c", tmp, out], check=True)
-    import os
-    os.unlink(tmp)
+    os.unlink(tmp_piece)
+
+    # THE RESULT IS COMPACTED, because qemu-io writes every touched cluster and the payload's zero
+    # runs would otherwise be stored. A convert to a new qcow2 is what drops them.
+    compact = out + ".compact"
+    subprocess.run(["qemu-img", "convert", "-f", "qcow2", "-O", "qcow2", "-c", out, compact],
+                   check=True)
+    os.replace(compact, out)
     print("wrote", out)
 
 
