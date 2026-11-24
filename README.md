@@ -1,4 +1,4 @@
-# easyvm-redoxos
+# easyvm-otheros
 
 Walkthroughs and CI for **Redox OS** guests, driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
@@ -93,4 +93,4 @@ A disk tag carries a **qcow2**, not a tar around one - `stage.yml` fetches a dis
 The **engine** and the **CI machinery** are both in `easydev-org/easyvm`; these workflows call
 `easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev` for the second.
 
-Disks pull from and publish to this repository's own ghcr package, `easydev-org/easyvm-redoxos`.
+Disks pull from and publish to this repository's own ghcr package, `easydev-org/easyvm-otheros`.

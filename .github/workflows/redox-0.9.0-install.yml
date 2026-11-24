@@ -34,7 +34,7 @@ on:
     inputs:
       disks_repository:
         description: "the ghcr repository that holds the disks and media"
-        default: "easydev-org/easyvm-redoxos"
+        default: "easydev-org/easyvm-otheros"
 
 concurrency:
   group: redox-0.9.0-install

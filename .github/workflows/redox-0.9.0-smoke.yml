@@ -19,7 +19,7 @@ on:
         default: "redox-install"
       disks_repository:
         description: "the ghcr repository that holds the disk"
-        default: "easydev-org/easyvm-redoxos"
+        default: "easydev-org/easyvm-otheros"
 
 concurrency:
   group: redox-0.9.0-smoke
