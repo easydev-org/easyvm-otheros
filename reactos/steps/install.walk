@@ -81,32 +81,34 @@ step "the livecd language page is up"
       words [[reactos]]
     max 60
 
-# THE LANGUAGE PAGE NEEDS A `Tab` BEFORE THE `Return`, AND THAT IS MEASURED. Its focus starts in the
-# language listbox, so a bare Return goes to the list, not to the button: MEASURED, `ret` alone left
-# the page exactly as it was and every later press shifted one page early - the walk then launched
-# `Run ReactOS Live CD` and waited on a live desktop for files that were never being copied.
+# THE LANGUAGE PAGE NEEDS A `Tab` BEFORE THE `Return`, AND THE PAIR HAS TO BE RETRIED.
 #
-# `tab` THEN `ret` advances. The gate below proves the press took, so a regression here stops on this
-# page instead of corrupting every step after it.
-step "focus the next button"
-  input tab
-  settle 1
-
-step "next past the language page"
-  input ret
-  settle 3
-
-# THE GATE IS THE PAGE'S OWN TWO CHOICES, AND `previous` WAS A MISTAKE. MEASURED: this page is read as
+# Its focus starts in the language listbox, so a bare Return goes to the list and not to the button:
+# MEASURED locally, `ret` alone left the page exactly as it was. `tab` THEN `ret` advances.
 #
-#	Reactos Liveco -ox 7 WAR \ a Run ReactOS Live ...
+# BUT A SINGLE PAIR IS NOT ENOUGH IN CI, AND THAT IS MEASURED TOO. On run 45463343490 the same walk
+# - the same file that reaches step 26 on the pod - stopped here with
 #
-# - `Run ReactOS Live` survives, while `Previous` in the footer does NOT (small text beside a button).
-# A gate on a word the reading drops sits out its whole budget on a page that is plainly on screen.
-step "the choose-what-to-do page is up"
+#	status: failed step 6/26 "the choose-what-to-do page is up"
+#	error: ... none of "run reactos" in "Reactos Liveco -ox 1 WZ@® \ a Next. Cancel Reactos ..."
+#
+# so both keys had been lost on a page that was plainly on screen, and a walk that presses each key
+# exactly once has no way back from that. The loop below is the way back: `tab` and `ret` again, and
+# again, until the next page's own words appear.
+#
+# THE RE-RUN IS SAFE BECAUSE THE GATE IS THE PAGE, NOT A CLOCK. If the first pair did land, the very
+# next look sees the choose-what-to-do page and the loop stops without another key - so the only
+# presses that happen are the ones needed. The alternative, a longer `settle:`, is a guess about how
+# slow a CI guest is, and the measurement above is what a wrong guess costs.
+step "advance past the language page, retrying the pair"
   repeat
     do
       item
-        wait 3
+        input tab
+      item
+        input ret
+      item
+        settle 3
       item
         read
           name choose
