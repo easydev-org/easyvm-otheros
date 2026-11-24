@@ -43,10 +43,26 @@ step "boot the published disk"
     args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file={{disk}},if=none,format=qcow2,discard=unmap,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
     timeout 300
 
-# `BdsDxe: starting` IS THE FIRMWARE SAYING IT FOUND SOMETHING BOOTABLE. It is a better witness than
-# any brightness threshold: a disk it cannot start prints the opposite sentence on the same console.
-step "the firmware handed control to the disk"
-  until "BdsDxe: starting"
+# THE WITNESS IS REDOX'S OWN LOADER, NOT THE FIRMWARE, AND THE DIFFERENCE IS MEASURED.
+#
+# `BdsDxe: starting` is what a disk prints when the firmware finds an ESP entry and jumps to the EFI
+# application. On THIS disk the firmware instead reports the loader by name and then the loader
+# prints its own banner, which is a stronger claim - it means the ESP was read, BOOTX64.EFI was
+# loaded, and it found the RedoxFS volume:
+#
+#	Redox OS Bootloader 1.0.0 on x86_64/UEFI
+#	Looking for RedoxFS:
+#	 - Acpi(PNP0A03,0x0)/Pci(0x4,0x0)/Sata(0x0,0x0)/HD(0x1,GPT,EE34E53E-...)
+#	 - Acpi(PNP0A03,0x0)/Pci(0x4,0x0)/Sata(0x0,0x0)/HD(0x3,GPT,73A55846-...)
+#	RedoxFS 6b2303fd-e8b4-408b-a244-f8d053b5bbee: 573 MiB
+#	Output 0, best resolution: 1920x1080
+#
+# A disk whose GPT is not recognised prints `BdsDxe: ... : Not Found` / `No bootable option or device
+# was found.` and never reaches this line - MEASURED on the same disk before its protective MBR was
+# written. So the banner is a better witness than any brightness threshold, and it is the sentence
+# that actually appears.
+step "the loader found the volume"
+  until "Redox OS Bootloader"
   from console
   timeout 300
 

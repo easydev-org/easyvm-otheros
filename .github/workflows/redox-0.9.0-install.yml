@@ -1,12 +1,33 @@
 name: redox-0.9.0-install
 
-# INSTALL REDOX OS ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+# PUBLISH THE INSTALLED REDOX DISK UNDER THIS REPOSITORY'S OWN TAG.
 #
-# THIS IS THE FIRST STAGE, SO IT HAS NO `pull:`: the disk is created by the walkthrough's `disk:` step
-# and the medium arrives from this repository's ghcr package as `assets:`.
+# THIS STAGE RUNS NO WALK, AND THAT IS THE WHOLE POINT. Redox cannot be installed by driving its
+# installer: MEASURED on the pod, three times, on a freshly created 20 GiB AHCI disk, the GUI
+# installer (run under sudo, which it needs or it reports "no drives found") writes a correct GPT and
+# the EFI loader and then stops after the first payload file -
 #
-# THE INSTALLER IMAGE IS MIRRORED, NOT FETCHED FROM THE PUBLISHER. `artifacts-publish.yml` puts it in
-# the package once, with its digest checked; a stage asks the package and nothing upstream.
+#	Installing to RedoxFS partition with size 0x4ffcffe00
+#	Loading filesystem.toml
+#	Loading package files
+#	Configuring system
+#	Create file file:redox_installer_75:/usr/lib/init.d/00_base
+#	<prompt returns, no error, no further output>
+#
+# - because the payload is FETCHED, not packaged: installer/src/installer.rs builds
+# `Library::new_remote("https://static.redox-os.org/pkg")` when it has no cookbook, and the live image
+# ships no local repository (/pkg holds 47 `*.pkg.tar.gz_head` metadata files and no /pkg/repo).
+#
+# SO THE DISK IS ASSEMBLED WHERE THE ISO IS PUBLISHED, BY THE `assemble` JOB IN
+# `artifacts-publish.yml`, and this workflow re-publishes it under `redox-install` - the tag every
+# stage after this one pulls. That is the same shape the Windows answer CD takes: an artifact derived
+# from a medium is built once, beside the medium, and a stage consumes it rather than building it.
+#
+# WHY A SEPARATE WORKFLOW AT ALL, RATHER THAN THE SMOKE STAGE PULLING `disk-redox-0.9.0-desktop`
+# DIRECTLY: the two tags mean two different things. `disk-redox-0.9.0-desktop` is a fact about the
+# IMAGE - rebuild it and every stage's input changes. `redox-install` is the disk THIS repository's
+# install produces, and the smoke stage pulls `from_tag: redox-install` like every other guest here.
+# Keeping them apart is what lets the assembly be re-run without pretending an install happened.
 
 on:
   workflow_dispatch:
@@ -22,27 +43,48 @@ concurrency:
 permissions:
   contents: read
   packages: write
-  checks: write
 
 jobs:
   install:
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
-    secrets: inherit
-    with:
-      image_repository: easydev-org/easyvm
-      image_tag: v0.0.3-dev
-      disk_gb: "20"
-      group: redox-0.9.0-install
-      disks_repository: ${{ inputs.disks_repository }}
-      stages: |
-        [
-          {
-            "name": "redox-install",
-            "file": "redox/steps/install.walk",
-            "pull": "",
-            "assets": ["iso-redox-0.9.0-desktop:redox_desktop_x86_64_2024-09-07_1225_livedisk.iso.zst.tar"],
-            "out": "redox-install.qcow2",
-            "publish": "redox-install",
-            "timeout": 90
-          }
-        ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: prepare the runner
+        uses: easydev-org/easyactions/runner-check@main
+        with:
+          kvm: false
+          disk-gb: '15'
+          token: ${{ github.token }}
+
+      - name: pull the assembled disk
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            disk-redox-0.9.0-desktop "$GITHUB_WORKSPACE/work/disk.qcow2.tar"
+          tar -xf "$GITHUB_WORKSPACE/work/disk.qcow2.tar" -C "$GITHUB_WORKSPACE/work"
+          rm -f "$GITHUB_WORKSPACE/work/disk.qcow2.tar"
+          mv "$GITHUB_WORKSPACE/work/redox-install.qcow2" "$GITHUB_WORKSPACE/work/disk.qcow2"
+          qemu-img info "$GITHUB_WORKSPACE/work/disk.qcow2"
+
+      - name: repack under this repository's install tag
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          [ -s disk.qcow2 ] || { echo "::error::no disk was pulled"; exit 1; }
+          tar -cf disk.qcow2.tar disk.qcow2
+          rm -f disk.qcow2
+          echo "=== $(stat -c %s disk.qcow2.tar) bytes"
+
+      - name: push
+        uses: easydev-org/easyactions/oci-push@main
+        with:
+          path: ${{ github.workspace }}/work/disk.qcow2.tar
+          tag: redox-install
+          repository: ${{ inputs.disks_repository || github.repository }}
+          token: ${{ github.token }}

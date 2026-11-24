@@ -204,3 +204,100 @@ jobs:
           tag: ${{ matrix.artifact.tag }}
           repository: ${{ inputs.disks_repository || github.repository }}
           token: ${{ github.token }}
+# THE INSTALLED DISK, ASSEMBLED HERE INSTEAD OF IN A STAGE.
+  #
+  # REDOX CANNOT BE INSTALLED BY DRIVING ITS INSTALLER, AND THAT IS MEASURED RATHER THAN ASSUMED.
+  # On the pod, three times, on a freshly created 20 GiB AHCI disk, the GUI installer (run under
+  # sudo, which it needs or it reports "no drives found") wrote a correct GPT and the EFI loader and
+  # then stopped after the first payload file:
+  #
+  #	Installing to RedoxFS partition with size 0x4ffcffe00
+  #	Loading filesystem.toml
+  #	Loading package files
+  #	Configuring system
+  #	Create file file:redox_installer_75:/usr/lib/init.d/00_base
+  #	<prompt returns, no error, no further output>
+  #
+  # - because the payload is FETCHED, not packaged: installer/src/installer.rs builds
+  # `Library::new_remote("https://static.redox-os.org/pkg")` when it has no cookbook, and the live
+  # image ships no local repository (/pkg holds 47 `*.pkg.tar.gz_head` metadata files and no
+  # /pkg/repo). A qemu-img convert of its output shows 1 MiB of non-zero content in a 20 GiB image
+  # and an entirely zero REDOX partition.
+  #
+  # WHAT THE ISO ALREADY IS: a bootable GPT disk. Its own partitions are the layout a disk needs -
+  # BIOS 34..2047, EFI 2048..4095 (1 MiB FAT12 holding EFI/BOOT/BOOTX64.EFI), REDOX 4096..1177599
+  # (a complete RedoxFS volume, version 6, /bin, ion, initfs, orbital) - so installing is copying
+  # those three pieces into a larger image.
+  #
+  # SO THE DISK IS BUILT WHERE THE ISO IS PUBLISHED, THE SAME CALL THE WINDOWS ANSWER CD MADE. A
+  # guest's disk is a fact about the IMAGE, not about a run: it boots to the same login form and
+  # opens with the same account, so publishing it once is what lets the stage after it exist at all.
+  # And the stage no longer starts a machine to produce it - `redox-0.9.0-install` pulls this tag and
+  # publishes it under its own name, so the two repositories agree on what an artifact is.
+  #
+  # THE SCRIPT IS IN THIS REPOSITORY AND IS NOT INLINED. `scripts/assemble-redox-disk.py` is a file
+  # that can be read, run and tested on its own; a YAML scalar holding 200 lines of Python cannot be
+  # any of those. MEASURED: the assembled disk boots to the Orbital login form and logs in.
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      checks: write
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'others'))
+      || inputs.which == 'disk-redox-0.9.0-desktop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: prepare the runner
+        uses: easydev-org/easyactions/runner-check@main
+        with:
+          kvm: false
+          disk-gb: '15'
+          token: ${{ github.token }}
+
+      - name: pull the ISO this disk is assembled from
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            iso-redox-0.9.0-desktop "$GITHUB_WORKSPACE/work/iso.tar"
+          tar -xf "$GITHUB_WORKSPACE/work/iso.tar" -C "$GITHUB_WORKSPACE/work"
+          rm -f "$GITHUB_WORKSPACE/work/iso.tar"
+          ls -l "$GITHUB_WORKSPACE/work"
+
+      - name: assemble the disk
+        # THE ONE COMMAND, AND ITS ARGUMENTS ARE THE TWO FILES AND THE SIZE. Everything the script
+        # knows about a Redox disk - the protective MBR, the entry table at LBA 2, REDOX at LBA 4096
+        # because the loader hardcodes a 2 MiB partition offset - is in the script with the failure
+        # that taught it, not in this YAML.
+        run: |
+          set -eu
+          iso=$(ls "$GITHUB_WORKSPACE"/work/*.iso | head -1)
+          [ -n "$iso" ] || { echo "::error::no ISO in the work directory"; exit 1; }
+          python3 "$GITHUB_WORKSPACE/scripts/assemble-redox-disk.py" \
+            "$iso" "$GITHUB_WORKSPACE/work/redox-install.qcow2" 20
+          qemu-img info "$GITHUB_WORKSPACE/work/redox-install.qcow2"
+
+      - name: pack into a tar
+        run: |
+          set -eu
+          src="$GITHUB_WORKSPACE/work/redox-install.qcow2"
+          [ -s "$src" ] || { echo "::error::the script produced no disk"; exit 1; }
+          tar -cf "$src.tar" -C "$GITHUB_WORKSPACE/work" redox-install.qcow2
+          rm -f "$src"
+          echo "=== $(stat -c %s "$src.tar") bytes"
+
+      - name: push
+        uses: easydev-org/easyactions/oci-push@main
+        with:
+          path: ${{ github.workspace }}/work/redox-install.qcow2.tar
+          tag: disk-redox-0.9.0-desktop
+          repository: ${{ inputs.disks_repository || github.repository }}
+          token: ${{ github.token }}
