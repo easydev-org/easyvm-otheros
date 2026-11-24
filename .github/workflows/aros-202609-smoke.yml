@@ -1,0 +1,70 @@
+name: aros-202609-smoke
+
+# DOES AROS REACH ITS WANDERER DESKTOP FROM ITS LIVECD? Boot it, compare the wordmark, record it.
+#
+# THIS GUEST HAS NO INSTALL LEG AND DOES NOT NEED ONE FOR THE CLAIM IT MAKES. AROS publishes a
+# `boot-iso` that is a complete live system: MEASURED, it boots on `pc` with KVM to its Wanderer
+# desktop - `RAM Disk`, `AROS Live CD`, `InstallAROS`, `Network` and `Readme` down the left, the
+# `Wanderer` screen title along the top, and the `aros` wordmark bottom-right.
+#
+# THE MEDIA DOES CARRY AN INSTALLER, and this stage deliberately does not drive it: `InstallAROS`
+# replaces the RAM disk with a hard disk, which answers a different question than "does this system
+# come up on our machine". A future `install.walk` would start from this file and click that icon.
+#
+# THE WITNESS IS A PICTURE. MEASURED: tesseract reads almost nothing off this desktop -
+#
+#	mem
+#	RAMIDIE:
+#
+# - because AROS draws its labels in a proportional bitmap font this OCR does not resolve. So the gate
+# compares sight: `mode: like` crops the same rectangle from the live frame and from
+# `reference/desktop.png` and scores them. MEASURED on the pod: 1.0000 similar on the second attempt.
+#
+# THE RECTANGLE IS THE `aros` WORDMARK in the bottom-right corner - drawn by the desktop itself, never
+# changing, and far from anything the system animates.
+#
+# THE REFERENCE IS A FULL 1024x768 FRAME, NOT A CROPPED CORNER: `similarityInRect` crops the reference
+# with the same `rect`, so a pre-cropped picture would be cut a second time and never match.
+#
+# `-machine pc` AND NOT `q35`: AROS/pc-x86_64's drivers are for the classic i440fx board and its own
+# documentation names no newer chipset.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish" and the artifact is
+# the recording.
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: aros-202609-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: aros-202609-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "aros-smoke",
+            "file": "aros/steps/smoke.walk",
+            "assets": ["iso-aros-202609:aros.iso.tar"],
+            "pull": "",
+            "out": "",
+            "timeout": 20
+          }
+        ]

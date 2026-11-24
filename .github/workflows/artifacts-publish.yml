@@ -125,6 +125,17 @@ jobs:
           # booted here. A `latest/` URL would be tempting and wrong: this path names the build, and
           # the sha below is what that file hashes to.
           - { tag: "iso-kolibrios-0.7.7.0", group: "others", url: "https://builds.kolibrios.org/ci/latest/en_US/kolibrios-0.7.7.0-9261-g8d5545ae-en_US.iso", sha: "6e35d0d0936f662a9e962942f7ec5552cb236ee2d0846dc8bfa1378d63b8f7d4", size: "103766016" }
+          # AROS/pc-x86_64 IS THE OPEN-SOURCE AMIGAOS 3.1 API, AND ITS `boot-iso` IS A LIVE SYSTEM.
+          #
+          # `.zip` IS ALREADY HANDLED by the decompress step below: it unzips the ISO in place, and the
+          # pack step then makes one tar of it. MEASURED: the extracted `aros-pc-x86_64.iso` is
+          # 455,487,488 bytes and boots on `pc` with KVM to its Wanderer desktop.
+          #
+          # THE DIGEST BELOW IS OF THE ZIP THIS REPOSITORY DOWNLOADED, not of anything upstream
+          # publishes - aros.org offers MD5s for its nightly builds, and this is not one of those; it
+          # is the ABIv11 release that axrt.org distributes. The size is checked as well, so a changed
+          # build is a refused push rather than a silent substitution.
+          - { tag: "iso-aros-202609", group: "others", url: "https://www.axrt.org/download/aros/v11/AROS-202609-pc-x86_64-boot-iso.zip", sha: "4d405e07b597d8d43964548b54b7c38dc4becaac6c6d681ad341567770fa007f", size: "122819457" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

@@ -1,0 +1,68 @@
+# AROS BOOTS FROM ITS LIVECD TO ITS WANDERER DESKTOP - THERE IS NOTHING TO INSTALL.
+#
+# AROS is an open-source reimplementation of the AmigaOS 3.1 API, and `pc-x86_64` is its native port
+# for ordinary PCs. The published `boot-iso` is a complete live system: MEASURED, it boots on `pc` with
+# KVM to its Wanderer desktop - the `RAM Disk`, `AROS Live CD`, `InstallAROS`, `Network` and `Readme`
+# icons down the left, the `Wanderer` screen title along the top, and the `aros` wordmark in the
+# bottom-right corner.
+#
+# There IS an installer on the media (`InstallAROS`), and this file deliberately does not drive it: the
+# question a smoke leg asks is whether the system comes up on our machine, and AROS's own install would
+# replace the RAM disk with a hard disk for no gain in that answer. A future `install.walk` would start
+# from this one and click that icon.
+#
+# THE WITNESS IS A PICTURE. MEASURED: tesseract reads almost nothing off this desktop -
+#
+#	mem
+#	RAMIDIE:
+#
+# - because AROS draws its labels in a proportional bitmap font that this OCR does not resolve. So the
+# gate compares sight: `mode: like` crops the same rectangle from the live frame and from
+# `reference/desktop.png` and scores them.
+#
+# THE RECTANGLE IS THE `aros` WORDMARK in the bottom-right corner - it is drawn by the desktop itself,
+# never changes, and is far from the clock and from anything the system animates.
+#
+# THE REFERENCE IS A FULL 1024x768 FRAME, NOT A CROPPED CORNER: `similarityInRect` crops the reference
+# with the same `rect`, so a pre-cropped picture would be cut a second time and never match.
+#
+# `-machine pc` AND NOT `q35`: AROS/pc-x86_64's drivers are for the classic i440fx board and its own
+# documentation names no newer chipset. The CD sits on `ide.1`, the primary IDE channel, which is where
+# the boot CD of every BIOS guest here sits.
+walkthrough "aros - the livecd reaches its wanderer desktop"
+resolution 1024x768
+recording_resolution 1024x768
+
+# THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never touches
+# it. The guest lives entirely on the CD.
+step "an empty target disk, which this guest never writes"
+  disk
+    file disk.qcow2
+    size 1
+
+step "boot the livecd"
+  boot
+    machine "pc,accel=kvm"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=aros.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    timeout 400
+
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name desk
+    until
+      source desk
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [770, 680, 990, 740]
+      rect_at [1024, 768]
+      must true
+    max 48
+
+step "record the desktop"
+  settle 30

@@ -1,13 +1,13 @@
 # easyvm-otheros
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
-**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS**, **ReactOS** and
-**KolibriOS** - driven by
+**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS**, **ReactOS**,
+**KolibriOS** and **AROS** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-Seven guests, in two groups, and which group a guest is in is a finding rather than a preference.
+Eight guests, in two groups, and which group a guest is in is a finding rather than a preference.
 
 **Two have a real `install.walk`** - an installer that partitions a disk, copies a system and writes a
 boot sector, driven step by step:
@@ -19,7 +19,7 @@ reactos/steps/install.walk    28 steps   the Setup Wizard, driven entirely by ke
 reactos/steps/smoke.walk       3 steps   boot the published disk, read the desktop
 ```
 
-**Five publish a smoke walk only**, and each for its own measured reason:
+**Six publish a smoke walk only**, and each for its own measured reason:
 
 | guest | why there is no `install.walk` |
 | --- | --- |
@@ -28,6 +28,7 @@ reactos/steps/smoke.walk       3 steps   boot the published disk, read the deskt
 | ToaruOS | one 7 MiB hybrid live image, no persistence, nothing to install |
 | Sculpt OS | a 41 MiB whole-disk image with its own GPT and boot loader |
 | KolibriOS | a 99 MiB LiveCD that boots to a desktop in RAM; no installer, no persistence |
+| AROS | a 455 MiB live `boot-iso` for the AmigaOS 3.1 API; it carries an installer, but the claim here is that the system comes up |
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
 
@@ -298,6 +299,31 @@ beside it), which never changes; the clock at the right end changes every minute
 
 The reference is a **full 1024x768 frame**, not a cropped bar: `similarityInRect` crops the reference
 with the same `rect`, so a pre-cropped picture would be cut a second time and never match.
+
+## AROS
+
+AROS is an open-source reimplementation of the AmigaOS 3.1 API, and `pc-x86_64` is its native port for
+ordinary PCs. The published `boot-iso` is a complete live system:
+
+```
+aros/steps/smoke.walk    attach the ISO as a CD on pc, compare the wordmark, record the desktop
+```
+
+MEASURED: it boots to Wanderer - `RAM Disk`, `AROS Live CD`, `InstallAROS`, `Network` and `Readme` down
+the left, the `Wanderer` screen title along the top, the `aros` wordmark bottom-right.
+
+The media does carry an installer (`InstallAROS`), and this repository deliberately does not drive it:
+that would replace the RAM disk with a hard disk and answer a different question than "does this system
+come up on our machine". A future `install.walk` would start from this file and click that icon.
+
+### The witness is a picture, like KolibriOS
+
+MEASURED, AROS's proportional bitmap font defeats this OCR - the whole desktop reads as `mem` and
+`RAMIDIE:` - so the gate uses `mode: like` against `reference/desktop.png`, cropping the bottom-right
+corner where the `aros` wordmark is drawn. **1.0000 similar** on the second attempt.
+
+The reference is a full 1024x768 frame, because `similarityInRect` crops the reference with the same
+`rect`.
 
 ## Debian GNU/Hurd
 
