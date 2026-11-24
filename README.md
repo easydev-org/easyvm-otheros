@@ -466,14 +466,20 @@ third, because they install.
 ```sh
 # the medium, once per release (this repository's own ghcr package)
 gh workflow run artifacts-publish.yml -f which=iso-haiku-r1beta5
-gh workflow run artifacts-publish.yml -f which=iso-reactos-0.4.16
 gh workflow run artifacts-publish.yml -f which=iso-toaruos-2.3.2
 gh workflow run artifacts-publish.yml -f which=iso-kolibrios-0.7.7.0
 gh workflow run artifacts-publish.yml -f which=iso-aros-202609
 gh workflow run artifacts-publish.yml -f which=disk-sculpt-26.10
 gh workflow run artifacts-publish.yml -f which=disk-hurd-20260314
 gh workflow run artifacts-publish.yml -f which=iso-redox-0.9.0-desktop
-gh workflow run artifacts-publish.yml -f which=disk-redox-0.9.0-desktop   # assembles the disk
+
+# TWO MEDIUMS ARE NOT IN THAT JOB, AND NEITHER IS A MISSING LINE:
+#
+#   iso-reactos-0.4.16   SourceForge refuses a GitHub runner (403 on every retry, reproduced by hand
+#                        with the download step's own user-agent and referer). It is published with
+#                        scripts/publish-disk.py from the copy this repository verified.
+#   iso-redox-0.9.0-desktop's DISK half, `disk-redox-0.9.0-desktop`, is built by that job's `assemble`
+#                        stage from the ISO, not by a `publish` row.
 
 # the stages, in the order each guest needs
 gh workflow run haiku-r1beta5-install.yml      && gh workflow run haiku-r1beta5-smoke.yml
