@@ -332,8 +332,18 @@ step "the files are being copied"
 #      and neither can `Restarting your Computer`, so no key can land on `Cancel`.
 #   2. THEN walk the wizard, where Return is the `Next` button on every page and cannot cancel.
 #
-# THE GATE IS THREE WORD-SETS BECAUSE THE SECOND STAGE IS QUICK AND THE FIRST READING MIGHT CATCH ANY OF
-# ITS EARLY PAGES. Any one of them means the machine rebooted into the installed system.
+# `wizard` IS THE FIRST SET FOR A REASON THAT WAS MEASURED THE HARD WAY. The second stage opens on
+# `Welcome to the ReactOS Setup Wizard`, and THAT PAGE WAITS FOR A KEY - so a gate that only named the
+# pages after it deadlocked: MEASURED on run 45470402029, the loop pressed nothing, the welcome page
+# never advanced, and the gate sat out all ninety attempts on the very page it was waiting for:
+#
+#	error: none of "personalize" or "regional settings" or "appearance" or "recycle bin" or
+#	       "documents" in "ReactoS Setup Welcome to the ReactOS Setup [3 | Wizard ..."
+#
+# `wizard` IS SAFE HERE AND WOULD NOT BE ELSEWHERE. The first stage also draws "Welcome to the ReactOS
+# Setup Wizard", which is why an earlier gate on that word fired too early - but THIS gate runs after
+# `the files are being copied`, so the first stage's welcome page is a hundred steps behind us and the
+# only wizard on screen is the second stage's.
 step "the second stage has started, so no key can land on the first stage's cancel"
   repeat
     do
@@ -348,7 +358,7 @@ step "the second stage has started, so no key can land on the first stage's canc
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
-      words [[personalize], [regional, settings], [appearance], [recycle, bin], [documents]]
+      words [[wizard], [personalize], [regional, settings], [appearance], [recycle, bin], [documents]]
     max 90
 
 step "walk the second stage to the installed desktop"
