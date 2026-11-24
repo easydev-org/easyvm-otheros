@@ -340,6 +340,12 @@ jobs:
       # qcow2, and the converted disk boots to the same `login:` prompt.
       - name: convert the hurd disk to qcow2
         if: inputs.which == 'hurd-install'
+        # THE TOKEN IS NOT OPTIONAL, AND ITS ABSENCE READS LIKE A MISSING TAG. MEASURED on run
+        # 45352334778: `GITHUB_TOKEN is empty; a private package needs it and an anonymous pull
+        # answers 401`. `pull-artifact.sh` requires it in the environment, and a step that forgets
+        # the block fails at the first pull rather than at anything to do with the disk.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
           mkdir -p "$GITHUB_WORKSPACE/work"
