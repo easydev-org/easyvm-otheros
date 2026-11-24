@@ -26,18 +26,21 @@ step "boot the published disk"
     args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=disk.qcow2,if=ide,index=0,media=disk,format=qcow2,id=target"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
     timeout 600
 
-# `Recycle Bin` IS THE WITNESS, AND IT IS THE ONE THAT TELLS AN INSTALL FROM A LIVE CD.
+# THE WITNESS IS THE DESKTOP'S OWN ICON LABELS, AND THE GATE ACCEPTS TWO READINGS OF THEM.
 #
-# MEASURED on the installed system's own desktop, at 800x600: the reading yields
+# MEASURED TWICE, and the two readings differ - which is why there are two word-sets:
 #
-#	"Computer   My Network   Recycle Bin   Applications ..."
+#	locally, on the installed disk      "Computer  My Network  Recycle Bin  Applications ..."
+#	in CI, on the same disk (run 45455212639)   "My (c) Read Me - 4 Documents 4 - a My 5 ..."
 #
-# - the icon labels down the left edge, all plain text on the wallpaper. `recycle bin` is chosen over
-# `computer` because it is the longest of them and so the least likely to be read as something else,
-# and over `applications` because the live CD shows an `Install ReactOS` icon instead.
+# The second reading is the SAME desktop with the icon column read differently: `Documents` survives
+# where `Recycle Bin` did not, and the leg went on to fail a gate on a screen that was plainly the
+# desktop. Both are icon labels on the wallpaper, so the gate takes either.
 #
-# IT IS ALSO THE WORD THE INSTALL LEG ALREADY GATES ON (`[[computer]]` for its last step), so the two
-# files agree about what "the installed system is up" looks like.
+# WHAT THE GATE MUST NOT BE IS A WIZARD WORD. An earlier version used `[[computer]]`, and ReactOS's
+# setup page says "This wizard installs ReactOS on your **computer**" - so it fired on the WIZARD and
+# published a disk still sitting on page one of the second stage. `Documents` and `Recycle Bin` are
+# drawn only by the finished system.
 step "the desktop is up"
   repeat
     do
@@ -52,7 +55,7 @@ step "the desktop is up"
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
-      words [[recycle, bin]]
+      words [[recycle, bin], [documents]]
     max 60
 
 step "record the desktop"

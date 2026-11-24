@@ -302,7 +302,13 @@ step "the files are being copied"
 #
 # A LOOP THAT PRESSES RETURN AND LOOKS FOR THE DESKTOP CANNOT MAKE EITHER MISTAKE. It does not care how
 # many pages there are, it does not care when the guest reboots, and it stops only on a word the wizard
-# never prints: `Recycle Bin` is an icon label on the installed desktop.
+# never prints: the desktop's own icon labels.
+#
+# THE GATE TAKES TWO READINGS OF THOSE LABELS, BECAUSE THE SAME DESKTOP READS DIFFERENTLY ON DIFFERENT
+# RUNS. MEASURED locally `Computer  My Network  Recycle Bin  Applications`; MEASURED in CI (run
+# 45455212639, same disk) `My (c) Read Me - 4 Documents 4 - a My 5`. `Documents` survives in the second
+# where `Recycle Bin` does not, so `words: [[recycle, bin], [documents]]` accepts either. A gate that
+# named only one of them reported failure on a screen that was plainly the desktop.
 #
 # THE RETURNS THAT LAND DURING THE REBOOT ARE HARMLESS. FreeLoader's menu is a single entry with
 # `ReactOS` preselected, so a Return there boots the only thing there is.
@@ -322,7 +328,7 @@ step "walk the second stage to the installed desktop"
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
-      words [[recycle, bin]]
+      words [[recycle, bin], [documents]]
     max 90
 
 step "stop the machine, with a floor that fits a small system"
