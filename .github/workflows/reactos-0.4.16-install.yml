@@ -178,6 +178,29 @@ jobs:
             "${{ inputs.disks_repository || github.repository }}" \
             reactos-install
 
+      # THE DAEMON AND ITS QEMU ARE KILLED EVEN WHEN THE WALK FAILED, AND THAT IS NOT TIDINESS.
+      #
+      # `stage.yml` does this and this job did not, so a failed install left `easyvm serve` and the
+      # guest it was driving alive on the runner for the rest of the job's timeout - and a qemu that
+      # outlives its walk still holds the qcow2's write lock, which is what makes the artifacts step
+      # afterwards unable to read `disk.qcow2` and the job's post-mortem useless.
+      #
+      # `if: always()` AND NOT A TRAILING STEP, because the failure this guards against is precisely
+      # the one that stops the steps before it. The `kill -9` follows the polite `kill` because a
+      # daemon waiting on a wedged qemu can ignore SIGTERM for as long as it likes.
+      - name: stop the daemon
+        if: always()
+        run: |
+          set -u
+          if [ -f "$GITHUB_WORKSPACE/work/daemon.pid" ]; then
+            pid=$(cat "$GITHUB_WORKSPACE/work/daemon.pid")
+            kill "$pid" 2>/dev/null || true
+            easyvm stop --work "$GITHUB_WORKSPACE/work" 2>/dev/null || true
+            sleep 5
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+          pgrep -a qemu-system-x86_64 || true
+
       - name: what was on screen
         if: always()
         uses: actions/upload-artifact@v4
