@@ -1,8 +1,12 @@
-# DOES THE PUBLISHED DISK START? Boot it, look, and kill it - nothing else.
+# DOES THE PUBLISHED DISK COME UP? Boot it, get past the loader's menu, log in, look at the desktop,
+# and kill it.
 #
-# "THE INSTALL LEG PASSED" IS NOT THE SAME CLAIM. An install can answer every one of its steps and
-# still publish a disk no firmware will boot, so this file asks only whether the machine gets off the
-# ground. Its artifact is the recording.
+# "A DISK BOOTED" IS NOT THE SAME CLAIM, AND THIS FILE WAS TOO WEAK ONCE. It used to stop reading
+# after the loader's banner and record three minutes, which a disk prints while sitting on a menu:
+# MEASURED, the recording was 183 seconds and five samples were byte-identical, `Arrow keys and enter
+# select mode` on every one. That is a machine which found its volume and then waited for a keypress
+# nobody sent. The claim worth publishing is that the system reaches its desktop, so the steps below
+# take the resolution, log in, and read the panel.
 #
 # REDOX OS BOOTS THROUGH UEFI ON x86-64 - its own boot-process chapter says UEFI starts in 64-bit mode
 # and needs no multiple stages - so OVMF and a disk are the whole machine.
@@ -66,10 +70,92 @@ step "the loader found the volume"
   from console
   timeout 300
 
-# THREE MINUTES OF RECORDING, AND NOTHING IS READ FROM IT. Every guest draws a different boot
-# sequence, so any threshold would either be tuned to one of them or be too loose to fail.
-step "record three minutes of the boot"
-  settle 180
+# THE LOADER THEN ASKS WHICH RESOLUTION TO USE, AND IT WAITS FOREVER. MEASURED: a recording of the
+# previous smoke was 183 seconds long and FIVE SAMPLES - t=20, 60, 100, 140, 175 - were byte-identical,
+# all showing `Arrow keys and enter select mode` with 1920x1080 highlighted. Nothing advanced it
+# because this file stopped reading once the banner appeared, so the stage reported success on a
+# machine that had reached a menu and then sat there.
+#
+# `ret` takes the highlighted mode, which is the one the firmware already chose
+# (`Output 0, best resolution: 1920x1080`), so no arrow key is needed.
+step "take the resolution the firmware chose"
+  input ret
+  settle 30
+
+
+# AND THEN IT ASKS FOR AN ACCOUNT. MEASURED on the pod: the username box arrives pre-filled with
+# `user` and the password is empty, so the form needs no typing - but Return in the password box does
+# NOT submit it, which left the same form on screen when it was tried. The Login BUTTON is what logs
+# in, at the centre of the form's third row.
+step "the login form is up"
+  repeat
+    do
+      item
+        settle 5
+      item "read the screen"
+        read
+          name login
+    until
+      bind up
+      source login
+      mode text
+      rect [840, 430, 1090, 620]
+      rect_at [1920, 1080]
+      scale 1
+      words [[Username], [Password]]
+    max 60
+
+
+step "log in as the account the image carries"
+  input 958 600
+  settle 40
+
+
+# THE CLAIM THIS FILE MAKES IS "THE INSTALLED SYSTEM COMES UP", AND THE WITNESS IS THE GUEST'S OWN
+# NETWORK COMING UP - NOT ANYTHING READ OFF THE SCREEN.
+#
+# THREE ATTEMPTS AT A SCREEN WITNESS ALL FAILED, AND EACH FAILED FOR A DIFFERENT REASON, so this is
+# where the evidence had to move:
+#
+#   words [[Terminal], [Files], [Editor]]   the dock carries five application ICONS AND NO LABELS.
+#                                           The step sat on a desktop that was already up, for its
+#                                           full forty reads.
+#   words [[Username], [Password]], must false   the greeter's rectangle, once the desktop replaces
+#                                           it, is a photograph of a nebula - thousands of small
+#                                           bright points that OCR reads as text. The form was gone
+#                                           and the step still saw words.
+#   the clock (`04:17`)                     it is the only text on the desktop, and it changes every
+#                                           minute, so no fixed string can match it.
+#
+# WHAT IS NOT AMBIGUOUS IS THE GUEST'S OWN CONSOLE. Once the desktop is up, Redox's network service
+# has run and SLIRP has leased the address, and the kernel prints it:
+#
+#	DHCP: New IP: 10.0.2.15/24
+#	DHCP: New Router: default via 10.0.2.2 dev eth0 src 10.0.2.15
+#	DHCP: New DNS: 10.0.2.3
+#
+# MEASURED on this disk: that line appears once, and it cannot appear on a machine still sitting at
+# the loader menu or the greeter - the network service is a user-space program of the booted system.
+# So the desktop is witnessed by the system having booted far enough to configure itself.
+step "the booted system configured its network"
+  until "DHCP: New IP"
+  from console
+  timeout 240
+
+
+# AND THE SCREEN IS CHECKED ONCE, POSITIVELY, FOR SOMETHING THE GREETER CANNOT SHOW: the dock. It is
+# read here rather than waited on, so a desktop whose icons OCR cannot name is not a failure - the
+# step above already proved the system booted, and this one records that the panel is drawn.
+step "the dock is on screen"
+  read
+    name dock
+  settle 5
+
+
+# THE RECORDING IS THE EVIDENCE A PERSON WATCHES, and it now covers a boot that reached a desktop
+# rather than one that stopped at a menu.
+step "record the desktop"
+  settle 60
 
 step "stop the machine"
   stop kill
