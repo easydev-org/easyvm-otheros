@@ -385,6 +385,13 @@ step "the second stage has started, so no key can land on the first stage's canc
 # closing page is the one with `Cancel`, and the step above already waits for the second stage to start
 # before any key is pressed, so no press can land there.)
 #
+# IT IS A `do:` LIST AND NOT A `repeat:`, BECAUSE THE ENGINE REFUSES A LOOP WITH NO CONDITION. MEASURED
+# on run 45491431098, where this was first written as `repeat: do: ... max: 14`:
+#
+#	error: `repeat:` must say `until:` - either a condition block or the name of a machine fact
+#
+# - and a fixed number of presses IS a `do:` list, which is what a list of steps looks like here.
+#
 # THE COUNT IS THE PAGE COUNT PLUS A REBOOT'S WORTH OF MARGIN. MEASURED by driving this wizard by hand to
 # a finished desktop, one Return per page:
 #
@@ -393,14 +400,50 @@ step "the second stage has started, so no key can land on the first stage's canc
 #
 # and the eleventh Return lands on the last page's `Finish`, after which the guest reboots into the
 # installed system. Four more are margin: on the desktop they press nothing that matters.
-step "walk the ten pages of the second stage"
-  repeat
-    do
-      item
-        input ret
-      item
-        settle 8
-    max 14
+step "walk the fourteen presses of the second stage"
+  do
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
+    item
+      input ret
+      settle 8
 
 # AND THE DESKTOP IS CONFIRMED FOR THE RECORD, AFTER the presses above - not as the thing that ends them.
 # `documents` is the icon column; it is readable here because the wizard is now gone, and a failure here
