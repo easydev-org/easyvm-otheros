@@ -331,10 +331,15 @@ step "walk the second stage to the installed desktop"
       words [[recycle, bin], [documents]]
     max 90
 
-step "stop the machine, with a floor that fits a small system"
+# THIS FILE ENDS WITHOUT `save:`, AND THAT IS DELIBERATE.
+#
+# `save:` would publish the disk from inside the walk, and the engine refuses anything below 512 MiB
+# (easydev-org/easyvm#9) - a complete ReactOS install is 415 MiB, so `save:` fails no matter what
+# `min_mb` says. The install workflow that runs this file therefore stops the machine here and pushes
+# `work/disk.qcow2` itself, with `scripts/publish-disk.py`, which has no floor.
+#
+# WHEN #9 IS FIXED this file gains `save "{{ out }}"` and the workflow loses its push step; the walk is
+# otherwise unchanged.
+step "stop the machine"
   stop kill
-  min_mb 300
   timeout 120
-
-step "publish the disk"
-  save "{{ out }}"

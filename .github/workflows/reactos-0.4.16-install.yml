@@ -1,0 +1,160 @@
+name: reactos-0.4.16-install
+
+# INSTALL REACTOS 0.4.16 BY DRIVING ITS SETUP WIZARD IN CI, AND PUBLISH THE DISK.
+#
+# THIS IS A HAND-WRITTEN JOB RATHER THAN A `stage.yml` LEG, AND THERE IS EXACTLY ONE REASON: the disk
+# cannot be published by `save:`.
+#
+# `save:`/`compress:` refuses any disk below 512 MiB (easydev-org/easyvm#9), and a COMPLETE ReactOS
+# 0.4.16 install is 415 MiB: `min_mb` is declared as a field of `stop:` and `disk:` so a small artifact
+# can say what small means, but nothing folds it into the `disk_min_mb` that `compress:` reads, so the
+# floor is always 512 and no walkthrough can lower it. stage.yml carries a SECOND copy of the same
+# check with no override at all.
+#
+# So this job does what stage.yml does - pull the medium, start ONE daemon, run the walk - and then
+# pushes `work/disk.qcow2` itself with `scripts/publish-disk.py`, which has no floor. Everything that
+# matters is still the engine's: the walk is `reactos/steps/install.walk`, unmodified, and the machine
+# is the qemu its own `boot:` step describes.
+#
+# WHEN #9 IS FIXED, this file becomes a `stage.yml` caller with `out:`/`publish:` and the push step
+# here is deleted; the walk and the smoke leg need no change, because the tag is already
+# `reactos-install`.
+#
+# THE MEDIUM IS PULLED, NOT DOWNLOADED BY THE WALK, for the reason stage.yml gives: an input a walk
+# needs is on disk before the walk starts, so a stage never measures a download and calls it a boot.
+# The asset is a tar holding `ReactOS-0.4.16-i386.iso`; unpacking renames it to its own basename, and
+# this job renames it again to `reactos.iso`, which is the name the walk's `-drive file=` asks for.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media and receives the disk"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: reactos-0.4.16-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # THE SAME CONTAINER AND THE SAME THREE DEVICES stage.yml GIVES EVERY LEG. `/dev/kvm` is the
+    # accelerator; `/dev/net/tun` and NET_ADMIN are the tap the NIC is attached to. Without KVM the
+    # install runs at TCG speed and the walk's settled waits become guesses.
+    container:
+      image: ghcr.io/easydev-org/easyvm:v0.0.3-dev
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --device /dev/kvm --device /dev/net/tun --cap-add NET_ADMIN
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: prepare the runner
+        uses: easydev-org/easyactions/runner-check@main
+        with:
+          kvm: true
+          tun: true
+          disk-gb: '20'
+          token: ${{ github.token }}
+
+      - name: pull the medium and unpack it to the name the walk asks for
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          cd "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            iso-reactos-0.4.16 "$GITHUB_WORKSPACE/work/reactos.iso.tar"
+          # ONE TAR OF ONE FILE, WHICH IS THE SHAPE EVERY ASSET HERE HAS. Unpacking gives
+          # `ReactOS-0.4.16-i386.iso`; the walk wants `reactos.iso`.
+          tar -xf reactos.iso.tar
+          rm -f reactos.iso.tar
+          mv ReactOS-0.4.16-i386.iso reactos.iso
+          ls -l reactos.iso
+          qemu-img info reactos.iso >/dev/null 2>&1 || true
+
+      - name: start the one daemon that owns the machine
+        # ONE PROCESS OWNS THE MACHINE FOR THE WHOLE RUN, and the ready line is the contract rather
+        # than the socket file: a file that exists is not a daemon that answers.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          export DISKS_REPOSITORY="$(printf '%s' '${{ inputs.disks_repository || github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          easyvm serve --work "$GITHUB_WORKSPACE/work" > "$GITHUB_WORKSPACE/work/daemon.log" 2>&1 &
+          echo $! > "$GITHUB_WORKSPACE/work/daemon.pid"
+          for i in $(seq 1 30); do
+            logs=$(cat "$GITHUB_WORKSPACE/work/daemon.log" || true)
+            case "$logs" in *"listening on"*) break ;; esac
+            sleep 1
+          done
+          logs=$(cat "$GITHUB_WORKSPACE/work/daemon.log" || true)
+          printf '%s\n' "$logs"
+          case "$logs" in
+            *"listening on"*) echo "the daemon is up" ;;
+            *) echo "=== THE DAEMON DID NOT COME UP ==="; exit 1 ;;
+          esac
+
+      - name: run the install walk
+        # THE WALK CREATES ITS OWN 2 GiB TARGET WITH ITS `disk:` STEP, so it needs no `--boot-disk`.
+        # It ends with `stop kill`, which is what makes `disk.qcow2` readable afterwards.
+        run: |
+          set -eu
+          easyvm run "$GITHUB_WORKSPACE/reactos/steps/install.walk" \
+            --work "$GITHUB_WORKSPACE/work"
+          ls -l "$GITHUB_WORKSPACE/work/disk.qcow2"
+
+      - name: prove the disk is an image before publishing it
+        run: |
+          set -eu
+          qemu-img info "$GITHUB_WORKSPACE/work/disk.qcow2"
+          # AND THAT IT HOLDS A SYSTEM RATHER THAN A HEADER. `qemu-img create` writes about 197 KiB
+          # and this guest is 415 MiB, so 300 MiB separates them with no judgement in between - the
+          # same number the walk's own `stop:` would have used if the engine honoured it.
+          size=$(stat -c %s "$GITHUB_WORKSPACE/work/disk.qcow2")
+          echo "disk is $size bytes"
+          [ "$size" -ge $((300 * 1024 * 1024)) ] || {
+            echo "::error::the disk is $size bytes, below 300 MiB - the walk's clicks did not reach"
+            echo "::error::the installer's disk. Read the run log's last step."
+            exit 1
+          }
+
+      - name: publish the disk
+        # `scripts/publish-disk.py` IS `save:` WITHOUT THE FLOOR, and it is in this repository so the
+        # artifact is reproducible rather than remembered. See easydev-org/easyvm#9.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          python3 "$GITHUB_WORKSPACE/scripts/publish-disk.py" \
+            "$GITHUB_WORKSPACE/work/disk.qcow2" \
+            "${{ inputs.disks_repository || github.repository }}" \
+            reactos-install
+
+      - name: what was on screen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactos-install-video
+          path: ${{ github.workspace }}/work/*.mp4
+          if-no-files-found: warn
+
+      - name: what the guest said
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactos-install-logs
+          path: |
+            ${{ github.workspace }}/work/daemon.log
+            ${{ github.workspace }}/work/console.log
+          if-no-files-found: warn
