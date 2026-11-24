@@ -460,18 +460,52 @@ the tar. A walkthrough cannot do that, because decompression is preparation.
 
 ## The pipeline
 
+Every guest is two steps: publish the medium once, then run the stage that boots it. Two guests add a
+third, because they install.
+
 ```sh
+# the medium, once per release (this repository's own ghcr package)
+gh workflow run artifacts-publish.yml -f which=iso-haiku-r1beta5
+gh workflow run artifacts-publish.yml -f which=iso-reactos-0.4.16
+gh workflow run artifacts-publish.yml -f which=iso-toaruos-2.3.2
+gh workflow run artifacts-publish.yml -f which=iso-kolibrios-0.7.7.0
+gh workflow run artifacts-publish.yml -f which=iso-aros-202609
+gh workflow run artifacts-publish.yml -f which=disk-sculpt-26.10
+gh workflow run artifacts-publish.yml -f which=disk-hurd-20260314
 gh workflow run artifacts-publish.yml -f which=iso-redox-0.9.0-desktop
 gh workflow run artifacts-publish.yml -f which=disk-redox-0.9.0-desktop   # assembles the disk
-gh workflow run redox-0.9.0-install.yml                                   # re-tags it redox-install
-gh workflow run redox-0.9.0-smoke.yml
+
+# the stages, in the order each guest needs
+gh workflow run haiku-r1beta5-install.yml      && gh workflow run haiku-r1beta5-smoke.yml
+gh workflow run reactos-0.4.16-install.yml     && gh workflow run reactos-0.4.16-smoke.yml
+gh workflow run redox-0.9.0-install.yml        && gh workflow run redox-0.9.0-smoke.yml
+gh workflow run hurd-20260314-smoke.yml        # Debian publishes a finished disk
+gh workflow run toaruos-2.3.2-smoke.yml
+gh workflow run sculpt-26.10-smoke.yml
+gh workflow run kolibrios-0.7.7.0-smoke.yml
+gh workflow run aros-202609-smoke.yml
 ```
+
+Which tag each stage consumes:
+
+| guest | medium tag | disk tag | stage that runs |
+| --- | --- | --- | --- |
+| Haiku | `iso-haiku-r1beta5` | `haiku-install` | install -> smoke |
+| ReactOS | `iso-reactos-0.4.16` | `reactos-install` | install -> smoke |
+| Redox OS | `iso-redox-0.9.0-desktop` | `redox-install` | install -> smoke |
+| Debian GNU/Hurd | - | `hurd-install` | smoke |
+| ToaruOS | `iso-toaruos-2.3.2` | - | smoke |
+| Sculpt OS | `disk-sculpt-26.10` | - | smoke |
+| KolibriOS | `iso-kolibrios-0.7.7.0` | - | smoke |
+| AROS | `iso-aros-202609` | - | smoke |
 
 `disk-redox-0.9.0-desktop` is a fact about the IMAGE and `redox-install` is what this repository's
 install produces; the smoke stage pulls the second, like every other guest here.
 
 A disk tag carries a **qcow2**, not a tar around one - `stage.yml` fetches a disk tag straight onto
-`work/disk.qcow2` and pushes it with `media-type: application/vnd.easydev.qcow2`.
+`work/disk.qcow2` and pushes it with `media-type: application/vnd.easydev.qcow2`. A medium tag carries a
+**tar** holding the file the walk names, because `stage.yml` unpacks only when the destination ends in
+`.tar`.
 
 ## What lives elsewhere, on purpose
 
