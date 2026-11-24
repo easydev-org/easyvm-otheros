@@ -1,0 +1,334 @@
+# INSTALL REACTOS 0.4.16 ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+#
+# REACTOS IS A DIFFERENT MACHINE SHAPE FROM EVERY OTHER GUEST HERE, IN THREE WAYS AT ONCE:
+#
+#	32-bit only          the ISO is i386, and there is no amd64 ReactOS release
+#	BIOS only            it boots from the MBR through SeaBIOS; there is no UEFI loader
+#	no virtio-blk        its install disc ships no driver for it, so the disk is IDE
+#
+# SO THERE IS NO `-drive if=pflash` LINE AND NO OVMF, and the target is `-drive if=ide`. A walk that
+# copied the UEFI arguments every other guest here starts with would fail at the firmware before
+# ReactOS was ever read. `-machine pc` is i440fx, which is what the project's own QEMU page uses.
+#
+# EVERY ACTION IS A KEYSTROKE, AND THAT IS FORCED RATHER THAN CHOSEN.
+#
+# ReactOS fixes its own display mode at 800x600 - its "Setup the basic devices" page says
+# `VESA Display (800x600x32)` - and the engine REFUSES a `click:` on any frame that is not 1920x1080:
+#
+#	error: click (508, 447) is a coordinate measured at 1920x1080 but the framebuffer is 800x600.
+#	       A click cannot be rescaled the way a reading can
+#
+# MEASURED, with `-device VGA,xres=1920,yres=1080,vgamem_mb=32`: the guest still draws 800x600, so the
+# frame cannot be talked up to the size a click needs. The wizard is fully keyboard-driven - Tab moves
+# between the buttons, Return presses the focused one, Space toggles a checkbox - so this file uses no
+# coordinates at all and the 800x600 frame stops mattering.
+#
+# EVERY PRESS IS FOLLOWED BY A GATE, AND THAT IS THE WHOLE LESSON OF THIS FILE.
+#
+# MEASURED, on the version of this walk that pressed Return through the pages with only `settle:`
+# between them: the FIRST Return never reached the guest - the language dialog had not taken focus -
+# so every later press landed one page too early. `Down` then moved the focus to `Run ReactOS Live CD`
+# and the next Return launched the LIVE DESKTOP, and the walk then waited forty attempts for
+# `copying files` on a machine that was never installing anything. The screen it left behind was the
+# live desktop with an `Install ReactOS` icon on it, which is a dead end with no way back.
+#
+# A `settle:` IS A GUESS ABOUT TIME AND A GATE IS A FACT ABOUT THE SCREEN. Each gate below names words
+# that only its own page draws, so a press that did not register stops the walk on THAT page with the
+# page's name in the log, instead of silently shifting every press after it.
+walkthrough "reactos 0.4.16 - install to a fat partition on a whole disk"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+var out
+  default out/reactos.qcow2
+  from args.out
+
+step "create the empty disk"
+  disk
+    file disk.qcow2
+    size 2
+
+step "boot the installer"
+  boot
+    machine "pc,accel=kvm"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=reactos.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-drive", "file=disk.qcow2,if=ide,index=0,media=disk,format=qcow2,id=target"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    timeout 900
+
+# THE GATE IS ONE WORD THAT SURVIVES OCR, AND THREE EARLIER GATES DID NOT. MEASURED, on a page that
+# was plainly on screen:
+#
+#	[[language]]         the instruction line is read as `+t your languag` - small text over the
+#	                     wallpaper's gradient loses its last letters
+#	[[reactos, livecd]]  the title is read as `Reactos Liveco` - the trailing `CD` is dropped
+#	[[reactos]]          read every single time, in the title and in the version line
+#
+# `ReactOS` also appears in `ReactOS Version 0.4.16-x86` at the bottom right, which is drawn only
+# after the guest has booted - so the one word is a witness rather than a coincidence.
+step "the livecd language page is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name lang
+    until
+      source lang
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[reactos]]
+    max 60
+
+# THE LANGUAGE PAGE NEEDS A `Tab` BEFORE THE `Return`, AND THAT IS MEASURED. Its focus starts in the
+# language listbox, so a bare Return goes to the list, not to the button: MEASURED, `ret` alone left
+# the page exactly as it was and every later press shifted one page early - the walk then launched
+# `Run ReactOS Live CD` and waited on a live desktop for files that were never being copied.
+#
+# `tab` THEN `ret` advances. The gate below proves the press took, so a regression here stops on this
+# page instead of corrupting every step after it.
+step "focus the next button"
+  input tab
+  settle 1
+
+step "next past the language page"
+  input ret
+  settle 3
+
+# THE GATE IS THE PAGE'S OWN TWO CHOICES, AND `previous` WAS A MISTAKE. MEASURED: this page is read as
+#
+#	Reactos Liveco -ox 7 WAR \ a Run ReactOS Live ...
+#
+# - `Run ReactOS Live` survives, while `Previous` in the footer does NOT (small text beside a button).
+# A gate on a word the reading drops sits out its whole budget on a page that is plainly on screen.
+step "the choose-what-to-do page is up"
+  repeat
+    do
+      item
+        wait 3
+      item
+        read
+          name choose
+    until
+      source choose
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[run, reactos]]
+    max 20
+
+# `Run ReactOS Live CD` IS FOCUSED FIRST, so Install is one press down. MEASURED: a bare Return here
+# opens the live desktop instead of the installer, which is a dead end.
+step "choose install rather than the live cd"
+  input down
+  settle 2
+
+step "press install"
+  input ret
+  settle 4
+
+step "the setup wizard is up"
+  repeat
+    do
+      item
+        wait 4
+      item
+        read
+          name wiz
+    until
+      source wiz
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[wizard]]
+    max 30
+
+step "next past the welcome page"
+  input ret
+  settle 4
+
+step "the installation type page is up"
+  repeat
+    do
+      item
+        wait 4
+      item
+        read
+          name itype
+    until
+      source itype
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[installation, type]]
+    max 30
+
+step "next past the installation type"
+  input ret
+  settle 4
+
+step "the basic devices page is up"
+  repeat
+    do
+      item
+        wait 4
+      item
+        read
+          name dev
+    until
+      source dev
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[keyboard]]
+    max 30
+
+step "next past the basic devices"
+  input ret
+  settle 6
+
+step "the partition page is up"
+  repeat
+    do
+      item
+        wait 4
+      item
+        read
+          name part
+    until
+      source part
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[unpartitioned]]
+    max 30
+
+# ONE RETURN DOES BOTH: the partition is created and the Format dialog opens on top of it.
+step "create the partition, which opens the format dialog"
+  input ret
+  settle 5
+
+step "the format dialog is up"
+  repeat
+    do
+      item
+        wait 3
+      item
+        read
+          name fmt
+    until
+      source fmt
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[format]]
+    max 20
+
+step "accept the fat quick format"
+  input ret
+  settle 6
+
+step "the summary page is up"
+  repeat
+    do
+      item
+        wait 4
+      item
+        read
+          name summ
+    until
+      source summ
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[summary]]
+    max 30
+
+# THE SUMMARY PAGE'S ONLY CONTROL IS A LICENCE CHECKBOX, AND IT MUST BE TICKED BEFORE INSTALL IS
+# ENABLED. Space toggles it; then Tab moves Back -> Install.
+step "accept the alpha-stage warning"
+  input spc
+  settle 2
+
+step "move to install"
+  input tab
+  settle 1
+
+step "move to install, second press"
+  input tab
+  settle 1
+
+step "begin copying files"
+  input ret
+  settle 10
+
+step "the files are being copied"
+  repeat
+    do
+      item
+        wait 15
+      item
+        read
+          name copy
+    until
+      source copy
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[copying, files]]
+    max 60
+
+# THE SECOND STAGE IS ONE LOOP, AND IT REPLACES TEN BLIND RETURNS THAT DID NOT WORK.
+#
+# MEASURED: the version of this file that sent a `ret` for each of the ten second-stage pages and then
+# gated on `[[computer]]` PUBLISHED A DISK THAT STILL SHOWED THE SETUP WIZARD. Two separate mistakes
+# produced that, and the second is the reason this loop exists:
+#
+#  1. "Welcome to the ReactOS Setup Wizard" is drawn by BOTH stages, so the gate that was meant to say
+#     "the second stage has started" fired on the first stage's own welcome page - the ten Returns were
+#     spent while the guest was still copying files, and were lost.
+#  2. the page's body says "This wizard installs ReactOS on your **computer**", so a gate on
+#     `[[computer]]` matched WHILE THE WIZARD WAS STILL ON SCREEN. The walk then reported the install
+#     complete and published a disk sitting on page one of the second stage.
+#
+# A LOOP THAT PRESSES RETURN AND LOOKS FOR THE DESKTOP CANNOT MAKE EITHER MISTAKE. It does not care how
+# many pages there are, it does not care when the guest reboots, and it stops only on a word the wizard
+# never prints: `Recycle Bin` is an icon label on the installed desktop.
+#
+# THE RETURNS THAT LAND DURING THE REBOOT ARE HARMLESS. FreeLoader's menu is a single entry with
+# `ReactOS` preselected, so a Return there boots the only thing there is.
+step "walk the second stage to the installed desktop"
+  repeat
+    do
+      item
+        input ret
+      item
+        settle 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[recycle, bin]]
+    max 90
+
+step "stop the machine, with a floor that fits a small system"
+  stop kill
+  min_mb 300
+  timeout 120
+
+step "publish the disk"
+  save "{{ out }}"

@@ -1,0 +1,59 @@
+# DOES THE PUBLISHED REACTOS DISK REACH ITS DESKTOP? Boot it with no CD, read the desktop, stop.
+#
+# THIS IS THE CLAIM THE INSTALL LEG CANNOT MAKE, and ReactOS is a guest where the two claims really do
+# differ: the install runs 38 steps and ends with a disk, but only a boot of that disk says whether the
+# boot sector, the FAT partition and the copied system agree with each other.
+#
+# NO ISO IS ATTACHED. The only thing that can produce a desktop here is the published disk, so a live
+# CD's desktop cannot be mistaken for an installed one - which matters because REACTOS'S LIVE CD AND
+# ITS INSTALLED SYSTEM DRAW NEARLY THE SAME DESKTOP. The witness below is the one that separates them.
+#
+# BIOS AND i440fx, LIKE THE INSTALL LEG. ReactOS 0.4.16 is i386 with no amd64 release and no UEFI
+# loader, so there is no pflash and no OVMF; `-machine pc` is the board its own QEMU page names, and
+# the target is `-drive if=ide` because the release carries no virtio-blk driver.
+#
+# THE FRAME IS 800x600 BECAUSE THE GUEST DRAWS 800x600. MEASURED: ReactOS's own display page says
+# `VESA Display (800x600x32)` and it keeps that mode once installed, so every reading below is a
+# region of an 800x600 frame. Nothing here clicks, so the engine's 1920x1080 rule for `click:` never
+# applies.
+walkthrough "the published reactos disk reaches its desktop"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+step "boot the published disk"
+  boot
+    machine "pc,accel=kvm"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=disk.qcow2,if=ide,index=0,media=disk,format=qcow2,id=target"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    timeout 600
+
+# `Recycle Bin` IS THE WITNESS, AND IT IS THE ONE THAT TELLS AN INSTALL FROM A LIVE CD.
+#
+# MEASURED on the installed system's own desktop, at 800x600: the reading yields
+#
+#	"Computer   My Network   Recycle Bin   Applications ..."
+#
+# - the icon labels down the left edge, all plain text on the wallpaper. `recycle bin` is chosen over
+# `computer` because it is the longest of them and so the least likely to be read as something else,
+# and over `applications` because the live CD shows an `Install ReactOS` icon instead.
+#
+# IT IS ALSO THE WORD THE INSTALL LEG ALREADY GATES ON (`[[computer]]` for its last step), so the two
+# files agree about what "the installed system is up" looks like.
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[recycle, bin]]
+    max 60
+
+step "record the desktop"
+  settle 30

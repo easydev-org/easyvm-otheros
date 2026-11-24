@@ -1,7 +1,7 @@
 # easyvm-otheros
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
-**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS** and **Sculpt OS** - driven by
+**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS** and **ReactOS** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
@@ -151,6 +151,64 @@ see: 12 word(s): * seeuettte te Zz GENODE blueprint query requires depot ...
 (`rect [0, 660, 320, 740]` at `scale 3`) reads `Diagnostics` on every attempt. A small frame is not a
 reason to read all of it; it is the reason to read less. `leitzentrale` is a small label inside the
 graph and tesseract drops it entirely, so the gate names the one label in a fixed corner.
+
+## ReactOS
+
+ReactOS 0.4.16 is the second guest here with a real `install.walk` - its installer partitions a disk,
+formats a FAT partition, copies a system and writes a boot sector:
+
+```
+reactos/steps/install.walk    drive the Setup Wizard by keyboard, publish the disk
+reactos/steps/smoke.walk      boot that disk with no CD and read the desktop
+```
+
+### It is 32-bit, BIOS-only, and has no virtio-blk
+
+Three facts that shape every argument in both files:
+
+| | |
+| --- | --- |
+| **32-bit only** | the ISO is i386 and there is no amd64 ReactOS release |
+| **BIOS only** | it boots from the MBR through SeaBIOS; there is no UEFI loader, so no pflash and no OVMF |
+| **no virtio-blk** | the install disc ships no driver for it, so the target is `-drive if=ide` |
+
+`-machine pc` is i440fx, which is what the project's own QEMU page names.
+
+### Every action is a keystroke, because the guest picks 800x600
+
+ReactOS fixes its own display mode - its "Setup the basic devices" page says
+`VESA Display (800x600x32)` - and the engine **refuses a `click:` on any frame that is not
+1920x1080**:
+
+```
+error: click (508, 447) is a coordinate measured at 1920x1080 but the framebuffer is 800x600.
+       A click cannot be rescaled the way a reading can
+```
+
+MEASURED with `-device VGA,xres=1920,yres=1080,vgamem_mb=32`: the guest still draws 800x600, so the
+frame cannot be talked up to the size a click needs. The wizard is fully keyboard-driven, so the walk
+uses `input ret` / `input down` / `input spc` and no coordinates at all.
+
+Two keyboard details cost real installs and are both in the file:
+
+- the **language page needs `tab` before `return`** - its focus starts in the language listbox, so a
+  bare Return goes to the list and the wizard never advances;
+- the **second stage is one loop, not ten Returns** - "Welcome to the ReactOS Setup Wizard" is drawn by
+  *both* stages, so a gate on it fires on the first stage, and the page body says "installs ReactOS on
+  your **computer**", so a gate on `computer` matched while the wizard was still on screen. The loop
+  presses Return and looks only for `Recycle Bin`, which the wizard never prints.
+
+### It cannot publish, and that is an engine defect
+
+A complete install is **415 MiB**, and the engine refuses to publish anything below 512 MiB.
+`easydev-org/easyvm#9` records it: `min_mb` is declared as a field of `stop:` and `disk:` so a small
+artifact can say what small means, but nothing folds it into the `disk_min_mb` that `compress:` reads,
+so the floor is always 512. `stage.yml` carries a second copy of the same check with no override.
+
+So the disk the smoke leg pulls was **installed by that same walk and published by hand**, verified
+twice: `mdir -i disk.qcow2@@1M` shows `freeldr.sys`, `rosload.exe`, `ReactOS/`, `Program Files`; and
+the smoke walk boots it 3 of 3 steps locally. When #9 is fixed the install leg publishes directly and
+the smoke file needs no change, because the tag is already `reactos-install`.
 
 ## Debian GNU/Hurd
 
