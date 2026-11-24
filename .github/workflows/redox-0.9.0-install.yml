@@ -74,6 +74,9 @@ jobs:
           qemu-img --version
 
       - name: pull the assembled disk
+        # A DISK IS PULLED AS A DISK. `disk-redox-0.9.0-desktop` carries a qcow2 and this is a plain
+        # fetch; no tar is involved on either end, because the tag every later stage reads must be an
+        # image rather than a container for one.
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -81,25 +84,14 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/work"
           sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
             ghcr.io "${{ inputs.disks_repository || github.repository }}" \
-            disk-redox-0.9.0-desktop "$GITHUB_WORKSPACE/work/disk.qcow2.tar"
-          tar -xf "$GITHUB_WORKSPACE/work/disk.qcow2.tar" -C "$GITHUB_WORKSPACE/work"
-          rm -f "$GITHUB_WORKSPACE/work/disk.qcow2.tar"
-          mv "$GITHUB_WORKSPACE/work/redox-install.qcow2" "$GITHUB_WORKSPACE/work/disk.qcow2"
+            disk-redox-0.9.0-desktop "$GITHUB_WORKSPACE/work/disk.qcow2"
           qemu-img info "$GITHUB_WORKSPACE/work/disk.qcow2"
-
-      - name: repack under this repository's install tag
-        run: |
-          set -eu
-          cd "$GITHUB_WORKSPACE/work"
-          [ -s disk.qcow2 ] || { echo "::error::no disk was pulled"; exit 1; }
-          tar -cf disk.qcow2.tar disk.qcow2
-          rm -f disk.qcow2
-          echo "=== $(stat -c %s disk.qcow2.tar) bytes"
 
       - name: push
         uses: easydev-org/easyactions/oci-push@main
         with:
-          path: ${{ github.workspace }}/work/disk.qcow2.tar
+          path: ${{ github.workspace }}/work/disk.qcow2
           tag: redox-install
           repository: ${{ inputs.disks_repository || github.repository }}
+          media-type: application/vnd.easydev.qcow2
           token: ${{ github.token }}

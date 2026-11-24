@@ -301,19 +301,21 @@ jobs:
             "$iso" "$GITHUB_WORKSPACE/work/redox-install.qcow2" 20
           qemu-img info "$GITHUB_WORKSPACE/work/redox-install.qcow2"
 
-      - name: pack into a tar
-        run: |
-          set -eu
-          src="$GITHUB_WORKSPACE/work/redox-install.qcow2"
-          [ -s "$src" ] || { echo "::error::the script produced no disk"; exit 1; }
-          tar -cf "$src.tar" -C "$GITHUB_WORKSPACE/work" redox-install.qcow2
-          rm -f "$src"
-          echo "=== $(stat -c %s "$src.tar") bytes"
-
       - name: push
+        # A DISK IS PUSHED AS A DISK, NOT AS A TAR.
+        #
+        # MEASURED on the first end-to-end run: packing the qcow2 into a tar and pushing that put the
+        # tar's 161751040 bytes behind a tag every consumer reads as an image. `stage.yml`'s
+        # `pull the input disk` fetches a disk tag straight onto `work/disk.qcow2` - by design, because
+        # an install's output IS the input of the next leg - so the tar arrived with a qcow2 name and
+        # the overlay was refused with `qemu-img: ... Image is not in qcow2 format`.
+        #
+        # `media-type: application/vnd.easydev.qcow2` is the same declaration `stage.yml` makes when
+        # it publishes, which is what makes the two ends agree on what an artifact is.
         uses: easydev-org/easyactions/oci-push@main
         with:
-          path: ${{ github.workspace }}/work/redox-install.qcow2.tar
+          path: ${{ github.workspace }}/work/redox-install.qcow2
           tag: disk-redox-0.9.0-desktop
           repository: ${{ inputs.disks_repository || github.repository }}
+          media-type: application/vnd.easydev.qcow2
           token: ${{ github.token }}
