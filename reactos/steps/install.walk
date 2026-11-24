@@ -387,8 +387,33 @@ step "walk the second stage to the installed desktop"
 # `min_mb` says. The install workflow that runs this file therefore stops the machine here and pushes
 # `work/disk.qcow2` itself, with `scripts/publish-disk.py`, which has no floor.
 #
+# THE SHUTDOWN IS A POWER BUTTON, NOT A KILL, AND THAT IS MEASURED RATHER THAN PREFERRED.
+#
+# MEASURED ON RUN 45474709018 -> 45475851476, the CI install published a 314 MB disk and the smoke leg
+# then booted it straight back into `Welcome to the ReactOS Setup Wizard`:
+#
+#	see: 55 word(s): ReactoS Setup Welcome to the ReactOS Setup Wizard This wizard ...
+#
+# - the second stage had not been committed. The pod's copy of the same walk reached 415 MiB and boots
+# to its desktop, and the difference between the two runs is WHEN the machine was killed: `kill` sends
+# SIGKILL to qemu, so whatever the guest had written but not flushed is lost, and ReactOS's second
+# stage writes its settings through a registry that is only consistent after it shuts down itself.
+#
+# `acpi power` asks the guest to shut down the way a user would, and `wait_until stopped` is what says
+# it went: the same pair Haiku's install needed for the same reason (its BFS journal).
+#
+# THE RUN IS ALSO GIVEN A MOMENT TO SETTLE FIRST. The last step above stops as soon as the desktop's
+# icon labels are readable, which is before a fresh login has finished writing its own profile.
+step "let the new system finish writing its profile"
+  settle 30
+
+step "press the guest's power button"
+  acpi power
+  settle 5
+
+step "wait for the guest to shut down, so the registry and the fat are committed"
+  wait_until stopped
+  timeout 180
+
 # WHEN #9 IS FIXED this file gains `save "{{ out }}"` and the workflow loses its push step; the walk is
 # otherwise unchanged.
-step "stop the machine"
-  stop kill
-  timeout 120
