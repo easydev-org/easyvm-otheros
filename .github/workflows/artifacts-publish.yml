@@ -76,16 +76,23 @@ jobs:
           # a 2.8 MiB ESP with `EFI/BOOT/BOOTX64.EFI`. The install leg boots it as a CD on `ahci.1`;
           # the smoke leg never sees it at all.
           - { tag: "iso-haiku-r1beta5", group: "others", url: "https://mirrors.osuosl.org/pub/haiku/r1beta5/haiku-r1beta5-x86_64-anyboot.iso", sha: "22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69", size: "1477246976" }
-          # REACTOS SHIPS ITS INSTALLER INSIDE A ZIP, AND THE ISO IS THE MEDIUM. SourceForge does not
-          # publish a sibling digest for this release, so the row carries an empty `sha:` and the size
-          # is the check - the same shape the ReactOS entry takes in its own repository.
+          # REACTOS IS NOT PUBLISHED BY THIS JOB, AND THAT IS MEASURED RATHER THAN AN OMISSION.
           #
-          # `.zip` IS ALREADY HANDLED by the decompress step below: it unzips the ISO in place and the
-          # pack step then makes one tar of it, so what a stage pulls is a tar holding `reactos.iso`.
+          # Its 0.4.16 installer is a 198,087,895-byte zip on SourceForge, and SourceForge REFUSES a
+          # GitHub runner: MEASURED on run 45460366947, `curl: (22) The requested URL returned error:
+          # 403` on every one of the eight retries. The refusal was reproduced by hand with the same
+          # browser user-agent and referer the download step sends, and with `?use_mirror=autoselect`,
+          # so it is not a user-agent rule this job could satisfy - `master.dl.sourceforge.net`
+          # answers 200 and then a 301 to an HTML page rather than the file.
           #
-          # IT IS i386 AND BIOS-ONLY. There is no amd64 ReactOS 0.4.16 and no UEFI loader, which is why
-          # the install walk runs `-machine pc` with no pflash and an `ide` target.
-          - { tag: "iso-reactos-0.4.16", group: "others", url: "https://downloads.sourceforge.net/project/reactos/ReactOS/0.4.16/ReactOS-0.4.16-i386.zip", sha: "", size: "198087895" }
+          # THE MEDIUM IS THEREFORE PUBLISHED THE SAME WAY THE DISK IS, with `scripts/publish-disk.py`
+          # from the copy this repository verified, under the tag the install leg pulls:
+          #
+          #   iso-reactos-0.4.16   406,855,680 bytes   sha256:ec50d3df...
+          #                        a tar holding ReactOS-0.4.16-i386.iso
+          #
+          # THE ROW IS ABSENT RATHER THAN FAILING. A row here that cannot download would fail this
+          # workflow on every run and make the one job that mirrors the other media look broken.
           # TOARUOS PUBLISHES ONE FILE PER RELEASE AND CALLS IT `image.iso` - A HYBRID, NOT A PLAIN
           # ISO. MEASURED: LBA 0 holds a boot sector and offset 32769 holds the ISO9660 catalog
           # (`CD001`), so the same 7 MiB file boots as a CD on q35's AHCI controller and reaches
