@@ -314,6 +314,43 @@ step "the files are being copied"
 #
 # THE RETURNS THAT LAND DURING THE REBOOT ARE HARMLESS. FreeLoader's menu is a single entry with
 # `ReactOS` preselected, so a Return there boots the only thing there is.
+# THE SECOND STAGE IS ENTERED BEFORE ANY KEY IS PRESSED, AND THAT IS THE FIX FOR CI.
+#
+# MEASURED ON RUN 45466239309: the loop that pressed Return from the moment copying began spent its
+# ninety attempts on the FIRST stage's closing page, `Restarting your Computer`, and ended with
+#
+#	error: none of "recycle bin" or "documents" in "{ 4 , 3 FB Reactos setup x Restarting your ..."
+#
+# The presses were landing on that page's `Cancel`, which raises `Abort installation?` - so every
+# attempt made the walk further from the desktop it was waiting for. On the pod the same loop worked
+# because the guest rebooted before the first Return arrived; in CI it was slower and the presses hit.
+#
+# SO THERE ARE TWO STEPS AND THE ORDER IS THE WHOLE POINT:
+#
+#   1. WAIT for a page that exists only in the second stage - `Personalize your Software`,
+#      `Regional settings`, `Appearance` - pressing NOTHING. The first stage's own pages cannot match,
+#      and neither can `Restarting your Computer`, so no key can land on `Cancel`.
+#   2. THEN walk the wizard, where Return is the `Next` button on every page and cannot cancel.
+#
+# THE GATE IS THREE WORD-SETS BECAUSE THE SECOND STAGE IS QUICK AND THE FIRST READING MIGHT CATCH ANY OF
+# ITS EARLY PAGES. Any one of them means the machine rebooted into the installed system.
+step "the second stage has started, so no key can land on the first stage's cancel"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name stage2
+    until
+      source stage2
+      mode text
+      rect [0, 0, 800, 600]
+      rect_at [800, 600]
+      scale 1
+      words [[personalize], [regional, settings], [appearance], [recycle, bin], [documents]]
+    max 90
+
 step "walk the second stage to the installed desktop"
   repeat
     do
