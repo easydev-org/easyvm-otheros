@@ -1,0 +1,63 @@
+# DOES THE PUBLISHED HAIKU DISK COME UP? Boot it, look at the desktop, and stop it - nothing else.
+#
+# "THE INSTALL LEG PASSED" IS NOT THE SAME CLAIM. An installer can answer every one of its steps and
+# still publish a disk no firmware will boot. MEASURED on this very guest, twice, and in two different
+# ways:
+#
+#	guid partition map   the install completes at 753 MiB and SeaBIOS says `No bootable device`,
+#	                     because the protective MBR at LBA 0 describes a GPT and never an active
+#	                     0xEB partition;
+#	stop kill            the install completes at 753 MiB and SeaBIOS says the same thing, because
+#	                     BFS's journal was never replayed - the published root directory holds
+#	                     only `.` and `..`, so stage1 cannot find `system/packages/haiku_loader`.
+#
+# Both were fixed on the install side (Intel Partition Map, ACPI power button), and this file is what
+# proves the fix: it boots the published disk with NO iso attached and reads the deskbar.
+#
+# BIOS, NO pflash, AND THE RESOLUTION IS A CONSEQUENCE. MEASURED: with SeaBIOS and `vgamem_mb=32`
+# Haiku's VESA driver settles on 1920x1080, so the frame this file reads is 1920x1080. OVMF's GOP with
+# the same card takes the largest mode that fits and lands on 3840x2160 - which is why a UEFI variant
+# of this file would need every rectangle doubled.
+#
+# THE DISK IS `ide-hd` ON q35's AHCI CONTROLLER, the same bus the installer wrote through. Haiku's
+# AHCI driver enumerates it, and `bootindex=0` is the whole boot instruction - there is no ESP to find
+# and no firmware entry to name, because this system boots from an MBR.
+#
+# THE WITNESS IS THE DESKBAR, NOT THE BOOT LOG. Any disk that gets as far as `Booting from Hard Disk`
+# has done something, and a disk whose stage1 fails prints one line and stops. `Tracker` and the
+# `Haiku` entry are drawn by the installed system's own deskbar, so reading them is the claim that the
+# install is a running OS rather than a boot sector.
+walkthrough "the published haiku disk reaches its desktop"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+step "boot the published disk"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-m", "4096"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
+    timeout 600
+
+# THE DESKBAR IS SMALL TEXT AT 12 PX, so this reads the WHOLE frame rather than a strip of it.
+# MEASURED: `rect [0, 0, 1920, 60]` - the top sixty rows - read as `oc we OM 205m` and never matched,
+# while the same frame read whole yields `Haiku BeBook home Quick Tour User Guide Trash`. `rect_at`
+# and `scale` are not optional: an `until:` with `mode: text` measures a REGION, and a region-less
+# reading is refused by the engine with "a picture with no region has nothing to ask about".
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      scale 1
+      words [[haiku], [tracker]]
+    max 60
+
+step "record the desktop"
+  settle 30

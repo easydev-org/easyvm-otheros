@@ -1,0 +1,257 @@
+# INSTALL HAIKU ONTO A WHOLE 20 GiB DISK, THROUGH ITS OWN INSTALLER, AND PUBLISH THE RESULT.
+#
+# THIS IS THE GUEST THE ENGINE'S POINTER FIXES WERE MEASURED ON. `Install Haiku` opened a dialog and
+# nothing else happened for three image builds: the click was reported `{"ok":true}` while the pointer
+# never moved, because a booted connection was labelled from an empty argument list and every click
+# went to the tablet as a RELATIVE event (engine issue #8, fixed in 76b4d1ac). Every `input:` below is
+# a coordinate that was confirmed against a screenshot on this image, not a guess.
+#
+# BIOS, NOT UEFI, AND THE PARTITION MAP IS THE REASON. Haiku's r1beta5 installer writes an MBR boot
+# sector and a Be File System - it does NOT create an ESP - so an installed disk boots on BIOS and
+# only on BIOS unless somebody also runs `Tools -> Install EFI loader` by hand. This file therefore
+# boots SeaBIOS (no pflash), and DriveSetup is told to write an INTEL PARTITION MAP:
+#
+#	Disk -> Initialize -> Intel Partition Map...
+#
+# MEASURED, and this is the step that cost two whole installs: the submenu's first entry is GUID
+# Partition Map and Intel is the SECOND. A `down down` picks GUID, the install completes, the disk
+# reaches 753 MiB, and SeaBIOS then prints `No bootable device` because the protective MBR at LBA 0
+# describes a GPT and never an active 0xEB partition. One `down` is Intel; the resulting disk reads
+#
+#	part0 type=0xeb active=128 lba=64 cnt=41940992
+#
+# which is what bios_ia32's stage1 needs.
+#
+# THE FRAME IS 1920x1080 AND THAT IS A CONSEQUENCE OF THE FIRMWARE, NOT A CHOICE. MEASURED: SeaBIOS
+# hands Haiku's VESA driver a mode table and the driver settles on 1920x1080 at `vgamem_mb=32`, while
+# OVMF's GOP takes the largest mode that fits and lands on 3840x2160 with the same card. So BIOS keeps
+# every coordinate in this file at its natural scale, and a UEFI variant of this file would need all
+# of them doubled.
+#
+# THE POINTER IS A USB TABLET ON A UHCI CONTROLLER. Haiku's PS/2 driver closes an open menu when the
+# pointer leaves the menubar (engine issue #6), so a menu opened by a PS/2 click will not stay open for
+# the item below it. A tablet sends absolute coordinates and the menu behaves.
+#
+# `q35` LIKE EVERY OTHER GUEST HERE. Haiku's AHCI driver sees the target as `ide-hd` on q35's own SATA
+# controller, which is the same bus its installer enumerates on a machine whose CD is on `ahci.1`.
+#
+# AND THE SHUTDOWN IS ACPI, NOT `kill`. MEASURED: a `stop kill` publishes a disk whose BFS root
+# directory holds only `.` and `..` - the journal was never replayed, so stage1 cannot find
+# `system/packages/haiku_loader` and the firmware reports no bootable device. Pressing the guest's
+# power button and waiting for the process to go lets BFS commit, and the published disk boots.
+walkthrough "haiku r1beta5 - install to a be file system on a whole disk"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+var out
+  default out/haiku.qcow2
+  from args.out
+
+step "create the empty disk"
+  disk
+    file disk.qcow2
+    size 20
+
+step "boot the installer"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-m", "4096"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file=haiku.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ahci.1,bootindex=0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=1"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
+    timeout 900
+
+# THE WELCOME DIALOG ARRIVES ABOUT THIRTY-FIVE SECONDS AFTER THE FIRMWARE HANDS OVER, and a click
+# sent before it exists lands on the wallpaper - MEASURED, an install walked past this point clicked
+# `Try Haiku`'s position on a live desktop and produced a 193 KiB disk with nothing on it. Waiting for
+# the words is the fix.
+#
+# THE WORDS ARE FROM THE DIALOG'S BODY, NOT ITS TITLE, AND THAT IS MEASURED. `Welcome to Haiku!` is
+# drawn in a yellow title tab and tesseract DROPS IT ENTIRELY from this crop: the reading of the
+# correct rectangle began at `Esperanto` and ran on through `Thank you for trying out Haiku!`, so a
+# `words: [[welcome]]` gate could never fire and the loop sat out all sixty attempts. `thank` and
+# `trying` come from the sentence and `language`/`keymap` from the two section labels - each is a
+# plain word in a plain font on a white background, which is what this OCR is good at.
+step "the welcome dialog is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name welcome
+    until
+      source welcome
+      mode text
+      rect [600, 280, 1330, 770]
+      rect_at [1920, 1080]
+      scale 1
+      words [[thank, trying, haiku], [language, keymap]]
+    max 60
+
+step "install haiku"
+  input 1100 711
+  settle 8
+
+step "continue past the welcome"
+  input 1215 745
+  settle 6
+
+step "ok the language notice"
+  input 1075 518
+  settle 3
+
+step "set up partitions"
+  input 730 644
+  settle 8
+
+step "pick the hard disk"
+  input 900 497
+  settle 2
+
+step "open the disk menu"
+  input 480 305
+  settle 2
+
+step "move to initialize"
+  input down
+  settle 1
+
+step "open the initialize submenu"
+  input right
+  settle 2
+
+# THE SECOND ENTRY IS INTEL PARTITION MAP. See the header: the first is GUID, and GUID produces a
+# disk SeaBIOS will not boot.
+step "intel partition map - the map bios_ia32 stage1 boots"
+  input down
+  settle 1
+
+step "choose it"
+  input ret
+  settle 4
+
+step "confirm the initialization"
+  input 1012 479
+  settle 4
+
+step "write the partition map"
+  input 968 492
+  settle 6
+
+step "ok the new empty space"
+  input 1080 443
+  settle 3
+
+step "select the empty space"
+  input 700 511
+  settle 2
+
+step "open the partition menu"
+  input 545 305
+  settle 2
+
+step "move to create"
+  input down
+  settle 1
+
+step "create the partition"
+  input ret
+  settle 5
+
+step "name it haiku"
+  input 1005 552
+  settle 1
+
+step "type the name"
+  input text "Haiku"
+  settle 1
+
+step "create it"
+  input 1056 630
+  settle 5
+
+step "write the changes"
+  input 937 478
+  settle 6
+
+step "select the new partition"
+  input 705 511
+  settle 2
+
+step "open the partition menu again"
+  input 545 305
+  settle 2
+
+step "move to format"
+  input down
+  settle 1
+
+step "open the format submenu"
+  input right
+  settle 2
+
+step "be file system"
+  input ret
+  settle 4
+
+step "confirm the format"
+  input 985 462
+  settle 4
+
+step "do the format"
+  input 1040 597
+  settle 6
+
+step "write the format"
+  input 937 478
+  settle 8
+
+step "close the format result"
+  input 1074 463
+  settle 3
+
+step "back to the installer"
+  input alt+w
+  settle 3
+
+step "choose the target"
+  input 863 558
+  settle 3
+
+step "pick the bfs volume"
+  input 950 565
+  settle 3
+
+step "begin"
+  input 1187 659
+  settle 20
+
+# THE INSTALLER SAYS `Installation completed. Boot sector has been written to 'Haiku'.` and the disk
+# is about 719 MiB. Reading for the sentence is what separates a finished install from one whose
+# `Begin` click was swallowed.
+step "the installation completed"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name done
+    until
+      source done
+      mode text
+      rect [620, 400, 1300, 780]
+      rect_at [1920, 1080]
+      scale 1
+      words [[installation, completed]]
+    max 120
+
+# A POWER BUTTON, NOT A KILL. See the header: this is what makes the published disk bootable.
+step "press the guest's power button"
+  acpi power
+  settle 5
+
+step "wait for the guest to shut down, so be file system commits its journal"
+  wait_until stopped
+  timeout 180
+
+step "publish the disk"
+  save "{{ out }}"

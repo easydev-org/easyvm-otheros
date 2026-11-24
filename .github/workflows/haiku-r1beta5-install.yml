@@ -1,0 +1,69 @@
+name: haiku-r1beta5-install
+
+# INSTALL HAIKU THROUGH ITS OWN INSTALLER AND PUBLISH THE DISK.
+#
+# THIS LEG DRIVES THE GUEST. Unlike redox (whose installer fetches packages and stops) and hurd (a
+# finished disk with nothing to install), Haiku's installer works: it partitions a disk, formats a Be
+# File System, copies a system, and writes a boot sector. So the walk boots the INSTALLER ISO, walks
+# DriveSetup and the Installer by clicking measured coordinates, and publishes `disk.qcow2` when the
+# installer says it is finished.
+#
+# THE DISK BOOTS ON BIOS, AND THAT IS A CONSEQUENCE OF WHAT HAIKU WRITES.
+#
+# r1beta5's installer writes an MBR boot sector and a BFS, and it does NOT create an ESP. So there are
+# two ways to get a bootable disk and this leg takes the first:
+#
+#	1. Intel Partition Map (MBR) + BIOS        <- what install.walk does
+#	2. GUID Partition Map + a hand-made ESP and `Tools -> Install EFI loader`
+#
+# The second needs a human-shaped detour inside DriveSetup (create a 64 MiB FAT32 partition, then use
+# a Tools menu entry) and Haiku's own UEFI guide describes it as the manual path. The first is what the
+# medium itself does: `haiku-r1beta5-x86_64-anyboot.iso` carries `part0 type=0xeb` for BIOS. So the
+# walk asks DriveSetup for an Intel map and the machine has no pflash at all.
+#
+# THE MEDIUM IS PULLED, NOT DOWNLOADED BY THE WALK: `assets:` names `iso-haiku-r1beta5` and the name
+# it arrives as is `haiku.iso`, which is what the walk's `-drive file=haiku.iso` says.
+#
+# IT PUBLISHES `haiku-install`, the tag the smoke leg pulls.
+#
+# PARALLEL TO REDOX'S SPLIT, AND FOR THE SAME REASON. `iso-haiku-r1beta5` is a fact about the MEDIUM;
+# `haiku-install` is what THIS repository's install produces. Keeping them apart lets the install be
+# re-run without pretending the medium changed.
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media and receives the disk"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: haiku-r1beta5-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  install:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: haiku-r1beta5-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "haiku-install",
+            "file": "haiku/steps/install.walk",
+            "assets": ["iso-haiku-r1beta5:haiku.iso"],
+            "pull": "",
+            "out": "out/haiku.qcow2",
+            "timeout": 45,
+            "publish": "haiku-install"
+          }
+        ]

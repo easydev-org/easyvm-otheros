@@ -63,6 +63,19 @@ jobs:
           # IT IS A RAW IMAGE. The `unpack` step below turns it into a qcow2, because the overlay a
           # smoke boot runs on is a qcow2 backing chain and a raw base cannot be one.
           - { tag: "disk-hurd-20260314", group: "others", url: "https://cdimage.debian.org/cdimage/ports/latest/hurd-amd64/debian-hurd.img.tar.xz", sha: "57658ad3c99dd947619a932178cf883f20837c08beae7640d3873862dcff1d50", size: "371808120" }
+          # HAIKU R1/BETA5 IS AN ANYBOOT ISO, AND THE DIGEST BELOW IS THE PROJECT'S OWN.
+          #
+          # `haiku-r1beta5-x86_64-anyboot.iso` is the 64-bit medium: 1,477,246,976 bytes, and
+          # 22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69 is the sha256 printed on
+          # haiku-os.org's own "Get Haiku!" page for r1beta5. The copy this repository measured its
+          # install against has the same digest, so the medium booted in CI is the medium booted here.
+          #
+          # IT IS CALLED ANYBOOT BECAUSE IT IS TWO MEDIA IN ONE, and both halves matter to this
+          # repository: an El Torito catalog for a CD, and an MBR with two partitions for a disk -
+          # `part0 type=0xeb lba=12288` holding the Be File System and `part1 type=0xef lba=2879488`
+          # a 2.8 MiB ESP with `EFI/BOOT/BOOTX64.EFI`. The install leg boots it as a CD on `ahci.1`;
+          # the smoke leg never sees it at all.
+          - { tag: "iso-haiku-r1beta5", group: "others", url: "https://mirrors.osuosl.org/pub/haiku/r1beta5/haiku-r1beta5-x86_64-anyboot.iso", sha: "22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69", size: "1477246976" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

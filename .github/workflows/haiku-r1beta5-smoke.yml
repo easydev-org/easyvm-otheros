@@ -1,0 +1,63 @@
+name: haiku-r1beta5-smoke
+
+# DOES THE PUBLISHED HAIKU DISK REACH ITS DESKTOP? Boot it, read the deskbar, record it, stop it.
+#
+# THIS IS THE CLAIM THE INSTALL LEG CANNOT MAKE, AND ON THIS GUEST IT WAS ALSO THE CLAIM THAT EXPOSED
+# TWO INSTALL DEFECTS. An install can answer every step and still publish a disk no firmware boots:
+#
+#	GUID partition map   completes at 753 MiB, and SeaBIOS prints `No bootable device` - a protective
+#	                     MBR describing a GPT is not an active 0xEB partition;
+#	stop kill            completes at 753 MiB, and SeaBIOS prints the same - BFS's journal was never
+#	                     replayed, so the root directory holds only `.` and `..` and stage1 cannot
+#	                     find `system/packages/haiku_loader`.
+#
+# Both are fixed where the disk is made (Intel Partition Map; ACPI power button), and this leg is what
+# proves it: NO ISO IS ATTACHED, so the only thing that can produce a desktop is the published disk.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish (the stage may not
+# write one)" and the only artifact is the recording. The disk it verifies is the one the install leg
+# already pushed, so a smoke run cannot overwrite what it is testing.
+#
+# THE MACHINE HAS NO pflash, BECAUSE THIS SYSTEM BOOTS FROM AN MBR. Haiku's BIOS loader is
+# `bios_ia32/stage1`, which the SeaBIOS path reads from the partition's first sector; there is no ESP
+# to find and no firmware boot entry to name. `bootindex=0` on the `ide-hd` is the whole instruction.
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: >-
+          the PUBLISHED disk to boot. Empty uses the tag this repository's install leg publishes.
+        default: "haiku-install"
+      disks_repository:
+        description: "the ghcr repository that holds the disk"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: haiku-r1beta5-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: haiku-r1beta5-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "haiku-smoke",
+            "file": "haiku/steps/smoke.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "",
+            "timeout": 20
+          }
+        ]

@@ -1,19 +1,83 @@
 # easyvm-otheros
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
-**Redox OS** and **Debian GNU/Hurd** - driven by
+**Haiku**, **Redox OS** and **Debian GNU/Hurd** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-`redox/steps/smoke.walk` and `hurd/steps/smoke.walk`. **Neither has an `install.walk`, and in both
-cases that is the finding rather than an omission**:
+Two guests publish a **smoke** walk only, and for both that is the finding rather than an omission:
 
 - Redox's installer cannot produce a disk (it fetches packages over a network the live image has no
   repository for), so `scripts/assemble-redox-disk.py` builds one from the ISO's own partitions;
 - Debian publishes GNU/Hurd as a **finished disk image**, so there is nothing to install at all.
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
+
+**Haiku is the guest here that has a real `install.walk`.** Its r1beta5 installer works - it
+partitions, formats a Be File System, copies a system and writes a boot sector - so
+`haiku/steps/install.walk` drives it by clicking measured coordinates, and `haiku/steps/smoke.walk`
+boots what that install published.
+
+## Haiku
+
+Haiku R1/beta5 is installed by driving its own installer, and the disk it publishes boots on **BIOS**.
+
+```
+haiku/steps/install.walk    SeaBIOS + the anyboot ISO -> a 20 GiB disk with a BFS
+haiku/steps/smoke.walk      boot that disk with no ISO attached and read the deskbar
+```
+
+The medium is `haiku-r1beta5-x86_64-anyboot.iso`, 1,477,246,976 bytes, sha256
+`22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69` - the digest on haiku-os.org's own
+download page.
+
+### Why BIOS, and why the partition map is the whole story
+
+r1beta5's installer writes an **MBR boot sector and a Be File System**, and it does **not** create an
+ESP. An installed disk therefore boots through `bios_ia32/stage1` and only through it, unless somebody
+also runs `Tools -> Install EFI loader` against a hand-made FAT32 partition. The walk takes the first
+path, which is what the medium itself carries: the anyboot ISO's own `part0` is `type=0xeb`.
+
+That makes one menu item in DriveSetup decisive:
+
+```
+Disk -> Initialize -> Intel Partition Map...     <- the SECOND entry
+Disk -> Initialize -> GUID Partition Map...      <- the FIRST
+```
+
+MEASURED, and this cost two whole installs: choosing GUID produces a disk that reaches 753 MiB with
+the installer reporting `Installation completed. Boot sector has been written to 'Haiku'.`, and SeaBIOS
+then prints `No bootable device` - because the protective MBR at LBA 0 describes a GPT and never an
+active `0xEB` partition. The Intel map produces
+
+```
+part0 type=0xeb active=128 lba=64 cnt=41940992
+```
+
+which is what stage1 reads.
+
+### The shutdown is a power button, not a kill
+
+MEASURED: `stop kill` publishes a disk whose BFS root directory holds only `.` and `..`. The journal
+was never replayed, so stage1 walks the directory, does not find `system/packages/haiku_loader`, and
+prints `bios_ia32 stage1: Failed to load OS`. Pressing the guest's power button (`acpi power`) and
+waiting for the process to go (`wait_until stopped`) lets BFS commit, and the same disk boots to the
+desktop.
+
+### 1920x1080 is the firmware, not a choice
+
+With `vgamem_mb=32`, SeaBIOS hands Haiku's VESA driver a mode table and the driver settles on
+**1920x1080**; OVMF's GOP on the same card takes the largest mode that fits and lands on
+**3840x2160**. So the BIOS walk's coordinates are at their natural scale, and a UEFI variant of these
+files would need every one of them doubled.
+
+### The OCR reads the dialog's body, not its title
+
+`Welcome to Haiku!` is drawn in a yellow title tab and tesseract **drops it entirely** from the
+welcome dialog's crop - the reading starts at `Esperanto` and runs on through `Thank you for trying
+out Haiku!`. A `words: [[welcome]]` gate therefore never fires. The walk waits on `thank`, `trying`
+and `haiku`, which are plain words on a white background.
 
 ## Debian GNU/Hurd
 
