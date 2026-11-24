@@ -1,0 +1,207 @@
+# THE PUBLISHED DEBIAN GNU/HURD DISK COMES UP, LOGS IN, AND REACHES ITS DESKTOP.
+#
+# THIS GUEST IS A PRE-INSTALLED IMAGE, NOT AN INSTALLER. Debian publishes
+# `debian-hurd-amd64-<date>.img` (a raw disk) alongside the installer ISOs, and it boots straight to
+# a login prompt - MEASURED on the pod:
+#
+#	tty1
+#	login: _ 
+#	Debian GNU/Hurd forky/sid debian console
+#
+# so there is no `install.walk` here and no installer to drive. `redox-assemble` set the precedent:
+# when a project publishes a finished disk, the stage that runs is the one that proves it boots.
+#
+# ROOT AND demo BOTH LOG IN WITH NO PASSWORD, which is the image's own README: "You can then just log
+# in as demo or root user without a password."
+#
+# THE MACHINE IS q35 AND IT HAS NO USB DEVICES, AND BOTH HALVES ARE MEASURED.
+#
+# USB WOULD NOT WORK. GNU Mach has almost no USB support - Debian's own Hurd hardware page says so
+# outright ("as of January 2026, users should install the Hurd on physical machines with a CD,
+# because the Hurd has almost no USB support"), and the developers are still working on it through
+# rumpusbdisk. MEASURED here: a `-device usb-kbd` guest received NOTHING - `login:` stayed empty
+# while the same keypresses reached a machine with only PS/2 - and `-device usb-kbd` on `q35` also
+# fails to find a bus unless a controller is attached, since q35 has no `-usb` switch.
+#
+# PS/2 DOES WORK, ON q35 AS WELL AS pc. MEASURED on q35 with no `-device usb-*` at all: `login: root`
+# typed correctly and `uname -a` answered
+#
+#	GNU debian 0.9 GNU-Mach 1.8+git20260224-up-amd64/Hurd-0.9 x86_64 GNU
+#
+# - both i440fx and q35 carry the i8042 controller GNU Mach's inherited driver expects, so the
+# earlier pc-only walk was over-cautious rather than necessary. This is q35 because every other guest
+# in this repository is q35 and a machine type that differs for one guest is a variable nobody needs.
+#
+# THE DISK IS IDE, BECAUSE GNU MACH'S BLOCK DRIVERS ARE IDE AND AHCI. Mach's driver glue comes from
+# Linux 2.4 and covers IDE; `ide-hd` on q35's own SATA controller is what the image expects, and the
+# README's own QEMU line is `-drive file=debian-hurd*.img,cache=writeback` with no interface at all.
+walkthrough "debian gnu/hurd - the pre-installed image reaches its desktop"
+resolution 1024x768
+recording_resolution 1024x768
+
+step "boot the published disk"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "ide-hd,drive=target,bus=ide.0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
+    timeout 300
+
+
+# THE CONSOLE IS VGA, NOT SERIAL. MEASURED: console.log was 0 bytes after a full boot, because GNU
+# Mach writes its console to the framebuffer and nothing to the COM port - so every wait in this file
+# reads the screen. The one exception is the boot messages the kernel prints before handing over, and
+# those are not needed: the prompt itself is the witness.
+step "the login prompt is up"
+  repeat
+    do
+      item
+        settle 5
+      item "read the screen"
+        read
+          name prompt
+    until
+      bind up
+      source prompt
+      mode text
+      rect [0, 0, 400, 140]
+      rect_at [720, 400]
+      scale 1
+      words [[login]]
+    max 60
+
+
+# ROOT WITH NO PASSWORD. `type` then Return; the image's README says both `root` and `demo` work that
+# way. The password prompt then accepts an empty line.
+step "type the account"
+  input text "root"
+  settle 1
+
+
+step "log in"
+  input ret
+  settle 8
+
+
+step "the shell is up"
+  repeat
+    do
+      item
+        settle 4
+      item "read the screen"
+        read
+          name shell
+    until
+      bind up
+      source shell
+      mode text
+      rect [0, 280, 500, 340]
+      rect_at [720, 400]
+      scale 2
+      words [[root@debian]]
+    max 30
+
+
+# THE CLAIM THIS FILE MAKES IS ABOUT THE SYSTEM, NOT THE PROMPT, so it asks the kernel what it is.
+# A disk that boots a stale or wrong Hurd still reaches a `login:` line; `uname -a` saying
+# `GNU-Mach 1.8+git.../Hurd-0.9 x86_64 GNU` says the kernel and the serve rs came up together.
+step "ask the kernel what it is"
+  input text "uname -a"
+  settle 1
+
+
+step "run it"
+  input ret
+  settle 6
+
+
+step "the kernel answered"
+  repeat
+    do
+      item
+        settle 4
+      item "read the screen"
+        read
+          name uname
+    until
+      bind up
+      source uname
+      mode text
+      rect [0, 280, 600, 360]
+      rect_at [720, 400]
+      scale 2
+      words [[GNU-Mach], [Hurd]]
+    max 30
+
+
+# THE DESKTOP IS icewm, AND IT IS ALREADY INSTALLED - IT JUST DOES NOT START ITSELF.
+#
+# MEASURED on this image: `/usr/bin/icewm`, `/usr/bin/Xorg` and `/usr/bin/startx` all exist, and the
+# image boots to a TEXT console. Debian's Hurd release notes name icewm as the default window manager
+# of the installer's task selection, which is a different claim from "the image starts it", and this
+# file is what makes the difference visible.
+#
+# IT ALSO RECORDS WHAT THE OFFICIAL README SAYS ABOUT DESKTOPS: "the gnome and kde desktop are not
+# yet completely installable and working. The LXDE desktop is preferred, or even just icewm (by
+# default)". So a Hurd desktop is icewm, and a stage that expected GNOME would be testing something
+# Debian says does not work.
+step "start the desktop"
+  input text "startx &"
+  settle 1
+
+
+step "run it"
+  input ret
+  settle 30
+
+
+# THE WITNESS IS A PICTURE, NOT OCR, AND THAT IS THE WHOLE POINT OF THIS STEP.
+#
+# THREE TEXT ATTEMPTS FAILED ON A DESKTOP THAT WAS ALREADY UP, each for its own reason:
+#
+#   words [[icewm]]            `icewm` is drawn as a LOGO - a stylised wordmark beside a mountain
+#                              sketch - and tesseract refuses it at every scale tried.
+#   words [["1"], ["2"], ["3"]] the workspace buttons ARE plain text, but the highlighted one sits on
+#                              a beige block that bleeds into the glyph: MEASURED, `tesseract` read the
+#                              row as `ey 2` - the 1 strangled by its own highlight, the 3 dropped.
+#   the clock at the right     white-on-black at 12 px; tesseract returned nothing at all.
+#
+# A DESKTOP IS A THING YOU RECOGNISE BY SIGHT, so it is compared with sight: `mode like` crops the
+# SAME rectangle from the live frame and from `reference/desktop.png` and scores them, which is what
+# popos's install walk already does for its live desktop.
+#
+# THE REFERENCE IS A FULL 1920x1080 FRAME, NOT A CROPPED BAR. MEASURED in the engine
+# (`similarityInRect`): the reference is cropped with the same `rect` as the frame, so a pre-cropped
+# picture would be cut a second time and never match.
+#
+# THE RECTANGLE COVERS icewm's mark, its three buttons and all four workspace tabs - the parts of the
+# bar that never change. The clock is deliberately outside it, because it changes every second.
+#
+# AND IT CANNOT MATCH THE TEXT CONSOLE: the boot screen is 720x400, so a rect reaching y=1080 is
+# outside that frame entirely. The comparison only has an answer once `startx` has switched the
+# framebuffer to 1920x1080 - which IS the desktop arriving.
+step "the desktop is up"
+  repeat
+    do
+      item
+        settle 6
+      item "read the screen"
+        read
+          name desk
+    until
+      bind up
+      source desk
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [0, 1010, 700, 1080]
+      rect_at [1920, 1080]
+      must true
+    max 30
+
+
+step "record the desktop"
+  settle 60
+
+
+step "stop the machine"
+  stop kill
+  timeout 120

@@ -53,6 +53,16 @@ jobs:
       matrix:
         artifact:
           - { tag: "iso-redox-0.9.0-desktop", group: "others", url: "https://static.redox-os.org/releases/0.9.0/x86_64/redox_desktop_x86_64_2024-09-07_1225_livedisk.iso.zst", sha: "0b63f7e138c7b0ad08e1d7f4c4779b20427673a01fe25603b93659605e029bc9", size: "120804843" }
+          # DEBIAN GNU/HURD SHIPS A FINISHED DISK, NOT AN INSTALLER - and this row mirrors the disk.
+          #
+          # The upstream directory offers the same image as .img, .img.gz, .img.tar.xz, .img.zip and
+          # a few dated copies; `.img.tar.xz` is what its README recommends ("The .tar.xz is still the
+          # preferred, as it will produce a sparse file on your disk"). The digest below was taken
+          # from the file this repository actually booted, not typed from a page.
+          #
+          # IT IS A RAW IMAGE. The `unpack` step below turns it into a qcow2, because the overlay a
+          # smoke boot runs on is a qcow2 backing chain and a raw base cannot be one.
+          - { tag: "disk-hurd-20260314", group: "others", url: "https://cdimage.debian.org/cdimage/ports/latest/hurd-amd64/debian-hurd.img.tar.xz", sha: "57658ad3c99dd947619a932178cf883f20837c08beae7640d3873862dcff1d50", size: "371808120" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty
@@ -170,6 +180,21 @@ jobs:
               rm -f "$src"
               echo "unzipped $(basename "$src") -> $iso"
               ;;
+            *.tar.xz)
+              # DEBIAN GNU/HURD SHIPS ITS PRE-INSTALLED DISK AS `.img.tar.xz`. The same argument as
+              # the two cases above: a stage cannot untar and qemu cannot open a tar, so the unpacking
+              # is preparation and it happens here.
+              #
+              # THE IMAGE IS 4 GiB OF SPARSE FILE AND 355 MiB COMPRESSED. Extracting it in place gives
+              # the pack step a directory holding one `.img`, unchanged in shape from every other row.
+              dir=$(dirname "$src")
+              tar -xJf "$src" -C "$dir"
+              img=$(find "$dir" -maxdepth 1 -name '*.img' | head -1)
+              [ -n "$img" ] || { echo "::error::$src holds no .img"; exit 1; }
+              rm -f "$src"
+              out="$img"
+              echo "untarred $(basename "$src") -> $(basename "$img") ($(stat -c %s "$img") bytes)"
+              ;;
             *) out="$src"; echo "not compressed: $(basename "$src")" ;;
           esac
           echo "path=$out" >> "$GITHUB_OUTPUT"
@@ -249,6 +274,7 @@ jobs:
       github.event_name != 'workflow_dispatch'
       || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'others'))
       || inputs.which == 'disk-redox-0.9.0-desktop'
+      || inputs.which == 'hurd-install'
     steps:
       - uses: actions/checkout@v4
 
@@ -276,6 +302,7 @@ jobs:
           qemu-io --version 2>&1 | head -1
 
       - name: pull the ISO this disk is assembled from
+        if: inputs.which != 'hurd-install'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -288,7 +315,9 @@ jobs:
           rm -f "$GITHUB_WORKSPACE/work/iso.tar"
           ls -l "$GITHUB_WORKSPACE/work"
 
-      - name: assemble the disk
+      # REDOX IS ASSEMBLED FROM ITS ISO'S OWN THREE PARTITIONS.
+      - name: assemble the redox disk
+        if: inputs.which != 'hurd-install'
         # THE ONE COMMAND, AND ITS ARGUMENTS ARE THE TWO FILES AND THE SIZE. Everything the script
         # knows about a Redox disk - the protective MBR, the entry table at LBA 2, REDOX at LBA 4096
         # because the loader hardcodes a 2 MiB partition offset - is in the script with the failure
@@ -300,6 +329,46 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/assemble-redox-disk.py" \
             "$iso" "$GITHUB_WORKSPACE/work/redox-install.qcow2" 20
           qemu-img info "$GITHUB_WORKSPACE/work/redox-install.qcow2"
+
+      # DEBIAN GNU/HURD NEEDS NO ASSEMBLY AT ALL - IT IS ALREADY A DISK. What it needs is a FORMAT
+      # CHANGE, because the overlay a smoke boot runs on is a qcow2 backing chain and Debian publishes
+      # a raw `.img`. MEASURED on the pod: `qemu-img create -f qcow2 -b <raw>.img` is refused, and the
+      # boot fails with `could not create an overlay over hurd.img: Image is not in qcow2 format`.
+      #
+      # THE CONVERSION IS COMPRESSED (`-c`) because the image is 4 GiB of mostly-empty ext2 and the
+      # published form should not cost four gigabytes of registry. MEASURED: 4.0 GiB raw -> 544 MiB
+      # qcow2, and the converted disk boots to the same `login:` prompt.
+      - name: convert the hurd disk to qcow2
+        if: inputs.which == 'hurd-install'
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            disk-hurd-20260314 "$GITHUB_WORKSPACE/work/hurd.tar"
+          tar -xf "$GITHUB_WORKSPACE/work/hurd.tar" -C "$GITHUB_WORKSPACE/work"
+          rm -f "$GITHUB_WORKSPACE/work/hurd.tar"
+          img=$(ls "$GITHUB_WORKSPACE"/work/*.img | head -1)
+          [ -n "$img" ] || { echo "::error::no .img in the pulled artifact"; exit 1; }
+          echo "=== $img is $(stat -c %s "$img") bytes"
+          # THE MBR AND ITS PARTITIONS ARE THE CLAIM: a raw disk with no boot signature is not a
+          # disk this stage can hand to a machine, and saying so here is cheaper than a smoke failure.
+          python3 - "$img" <<'PYEOF'
+          import struct, sys
+          d = open(sys.argv[1], "rb").read(2 * 1024 * 1024)
+          if d[510:512] != b"\x55\xaa":
+              sys.exit("the image has no MBR boot signature: %r" % d[510:512])
+          parts = []
+          for i in range(4):
+              e = d[446 + i * 16:446 + (i + 1) * 16]
+              if e[4]:
+                  parts.append((e[4], int.from_bytes(e[8:12], "little"),
+                                int.from_bytes(e[12:16], "little")))
+          print("MBR ok; partitions:", parts)
+          PYEOF
+          qemu-img convert -f raw -O qcow2 -c "$img" "$GITHUB_WORKSPACE/work/hurd-install.qcow2"
+          rm -f "$img"
+          qemu-img info "$GITHUB_WORKSPACE/work/hurd-install.qcow2"
 
       - name: push
         # A DISK IS PUSHED AS A DISK, NOT AS A TAR.
@@ -314,8 +383,8 @@ jobs:
         # it publishes, which is what makes the two ends agree on what an artifact is.
         uses: easydev-org/easyactions/oci-push@main
         with:
-          path: ${{ github.workspace }}/work/redox-install.qcow2
-          tag: disk-redox-0.9.0-desktop
+          path: ${{ github.workspace }}/work/${{ inputs.which == 'hurd-install' && 'hurd-install' || 'redox-install' }}.qcow2
+          tag: ${{ inputs.which == 'hurd-install' && 'hurd-install' || 'disk-redox-0.9.0-desktop' }}
           repository: ${{ inputs.disks_repository || github.repository }}
           media-type: application/vnd.easydev.qcow2
           token: ${{ github.token }}

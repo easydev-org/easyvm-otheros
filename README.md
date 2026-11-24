@@ -1,13 +1,88 @@
 # easyvm-otheros
 
-Walkthroughs and CI for **Redox OS** guests, driven by
+Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
+**Redox OS** and **Debian GNU/Hurd** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-`redox/steps/smoke.walk` - the only walk this repository has, and deliberately so: there is no
-`install.walk`, because Redox cannot be installed by driving its installer (see below).
-`scripts/assemble-redox-disk.py` builds the installed disk instead.
+`redox/steps/smoke.walk` and `hurd/steps/smoke.walk`. **Neither has an `install.walk`, and in both
+cases that is the finding rather than an omission**:
+
+- Redox's installer cannot produce a disk (it fetches packages over a network the live image has no
+  repository for), so `scripts/assemble-redox-disk.py` builds one from the ISO's own partitions;
+- Debian publishes GNU/Hurd as a **finished disk image**, so there is nothing to install at all.
+
+`scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
+
+## Debian GNU/Hurd
+
+Debian publishes this guest two ways - an installer ISO and a pre-installed disk - and this repository
+uses the **pre-installed disk**, which boots straight to a login prompt:
+
+```
+tty1
+login: _
+Debian GNU/Hurd forky/sid debian console
+```
+
+`root` and `demo` both log in **with no password**, which is the image's own README.
+
+Its kernel answers:
+
+```
+root@debian:~# uname -a
+GNU debian 0.9 GNU-Mach 1.8+git20260224-up-amd64/Hurd-0.9 x86_64 GNU
+```
+
+### The machine has no USB devices, and that is measured
+
+**GNU Mach has almost no USB support.** Debian's own Hurd hardware page says so outright - "as of
+January 2026, users should install the Hurd on physical machines with a CD, because the Hurd has
+almost no USB support" - and the developers are still working on it through rumpusbdisk.
+
+MEASURED here: a guest with `-device usb-kbd` received **nothing** (`login:` stayed empty while the
+same keypresses reached a machine with only PS/2). A guest with **no `-device usb-*` at all** types
+correctly, on **q35 as well as pc**, because both boards carry the i8042 controller Mach's inherited
+driver expects. The walk therefore uses q35 like every other guest here and simply attaches no USB
+input.
+
+The disk is IDE: Mach's block drivers come from Linux 2.4 and cover IDE, and the image's own README
+starts it with a bare `-drive file=debian-hurd*.img`.
+
+### Its desktop is icewm, and it does not start itself
+
+The image boots to a **text console**. `icewm`, `Xorg` and `startx` are all installed
+(`/usr/bin/icewm`, `/usr/bin/Xorg`, `/usr/bin/startx`), and `startx` brings up icewm - MEASURED, with
+the taskbar's workspace buttons and clock on screen.
+
+The release notes name icewm as the default window manager of the **installer's task selection**,
+which is not the same claim as "the image starts it". They also say GNOME and KDE "are not yet
+completely installable and working", so a Hurd desktop is icewm.
+
+### The desktop is recognised by comparing pictures, not by OCR
+
+Three text witnesses failed on a desktop that was already up: `icewm` is drawn as a **logo**
+tesseract refuses at every scale; the workspace buttons are plain text but the highlighted one
+bleeds into its own beige block (`tesseract` read the row as `ey 2`); the clock is white-on-black at
+12 px and returned nothing.
+
+So `hurd/steps/smoke.walk` uses `mode like` against `hurd/steps/reference/desktop.png`, cropping the
+same rectangle - `[0, 1010, 700, 1080]`, icewm's mark, its buttons and all four workspace tabs, with
+the changing clock deliberately outside - from both pictures and scoring them. MEASURED across three
+frames taken at different times: **1.0000** similarity each, because that part of the bar never
+changes.
+
+The reference is a **full 1920x1080 frame**, not a cropped bar: the engine crops the reference with
+the same `rect` as the live frame, so a pre-cropped picture is cut twice and never matches.
+
+And it cannot match the boot console: that frame is 720x400, so a rectangle reaching y=1080 is
+outside it. The comparison only has an answer once `startx` switches the framebuffer to 1920x1080 -
+which is the desktop arriving.
+
+## Redox OS
+
+### The installed disk is assembled, not installed
 
 ## What makes this guest different
 

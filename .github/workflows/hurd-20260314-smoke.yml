@@ -1,0 +1,57 @@
+name: hurd-20260314-smoke
+
+# DOES THE PUBLISHED DEBIAN GNU/HURD DISK COME UP? Boot it, log in, ask the kernel what it is,
+# start its desktop, record it, kill it.
+#
+# THIS IS THE CLAIM NOTHING ELSE MAKES. Debian publishes this guest as a FINISHED DISK - there is no
+# installer to drive, and `disk-hurd-20260314` is that disk converted to qcow2. So the only question
+# worth asking is whether it boots on OUR machine, with OUR firmware and OUR devices, and this stage
+# is the whole answer.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish (the stage may not
+# write one)" and the only artifact is the recording.
+#
+# THE DISK IS `hurd-install`, the qcow2 `artifacts-publish.yml` converts from the mirrored `.img`.
+# Keeping the two names apart is the same split Redox uses: `disk-hurd-20260314` is a fact about the
+# image, `hurd-install` is what this repository hands to a stage.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: >-
+          the PUBLISHED disk to boot. Empty uses the tag this repository's assemble job publishes.
+        default: "hurd-install"
+      disks_repository:
+        description: "the ghcr repository that holds the disk"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: hurd-20260314-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: hurd-20260314-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "hurd-smoke",
+            "file": "hurd/steps/smoke.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "",
+            "timeout": 20
+          }
+        ]
