@@ -259,6 +259,22 @@ jobs:
           disk-gb: '15'
           token: ${{ github.token }}
 
+      # THE TOOLS ARE INSTALLED BECAUSE THIS JOB BUILDS AN IMAGE AND DOES NOT BOOT ONE.
+      #
+      # MEASURED on run 45319948701: `FileNotFoundError: [Errno 2] No such file or directory:
+      # 'qemu-img'` - `runner-check` with `kvm: false` guarantees the runner has no KVM and, on this
+      # image, no qemu either. `qemu-utils` is the package that carries `qemu-img` and `qemu-io`, and
+      # nothing here needs acceleration: the work is `qemu-img create` plus writes at fixed offsets.
+      - name: the image tools this job needs
+        run: |
+          set -eu
+          if ! command -v qemu-img >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq qemu-utils
+          fi
+          qemu-img --version
+          qemu-io --version 2>&1 | head -1
+
       - name: pull the ISO this disk is assembled from
         env:
           GITHUB_TOKEN: ${{ github.token }}
