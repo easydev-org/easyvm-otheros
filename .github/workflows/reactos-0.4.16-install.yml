@@ -108,10 +108,38 @@ jobs:
       - name: run the install walk
         # THE WALK CREATES ITS OWN 2 GiB TARGET WITH ITS `disk:` STEP, so it needs no `--boot-disk`.
         # It ends with `stop kill`, which is what makes `disk.qcow2` readable afterwards.
+        #
+        # `easyvm run` RETURNS AS SOON AS THE DAEMON ACCEPTS THE FILE - it is a client, and the daemon
+        # drives the walk. MEASURED on run 45462263831: the step printed `status: starting`, then
+        # `ls: cannot access .../disk.qcow2: No such file or directory`, and the job failed four
+        # seconds in while the install it had just started was still running.
+        #
+        # SO THE STEP FOLLOWS THE RUN, which is what stage.yml's `follow it` does. `easyvm status`
+        # prints a `status:` line whose first word is `starting`, `running`, `finished`, `failed` or
+        # `destroyed`; the loop reads it every few seconds and stops on the three that mean it is over.
         run: |
           set -eu
           easyvm run "$GITHUB_WORKSPACE/reactos/steps/install.walk" \
             --work "$GITHUB_WORKSPACE/work"
+          for i in $(seq 1 240); do
+            out=$(easyvm status --work "$GITHUB_WORKSPACE/work" 2>&1 || true)
+            line=$(printf '%s\n' "$out" | head -1)
+            case "$line" in
+              status:*finished*|status:*failed*|status:*destroyed*)
+                printf '%s\n' "$out"
+                break ;;
+            esac
+            # EVERY TENTH LOOK PRINTS, so a stalled stage is visible in the log rather than silent.
+            if [ $((i % 10)) -eq 0 ]; then printf 'still: %s\n' "$line"; fi
+            sleep 10
+          done
+          out=$(easyvm status --work "$GITHUB_WORKSPACE/work" 2>&1 || true)
+          printf '%s\n' "$out"
+          case "$out" in
+            *"status: failed"*)
+              echo "::error::the install walk failed; read the status line above for the step and error"
+              exit 1 ;;
+          esac
           ls -l "$GITHUB_WORKSPACE/work/disk.qcow2"
 
       - name: prove the disk is an image before publishing it
