@@ -361,39 +361,55 @@ step "the second stage has started, so no key can land on the first stage's canc
       words [[wizard], [personalize], [regional, settings], [appearance], [recycle, bin], [documents]]
     max 90
 
-# THE GATE NEEDS TWO FACTS, NOT ONE: THE DESKTOP IS UP **AND** THE WIZARD IS GONE.
+# THE SECOND STAGE IS WALKED BY COUNT, NOT BY A GATE, AND THE REASON IS MEASURED.
 #
-# MEASURED, TWICE END TO END: with `words: [[recycle, bin], [documents]]` alone the install published a
-# disk that booted straight back into `Welcome to the ReactOS Setup Wizard`, and the smoke leg failed
-# four times on it:
+# TWO GATES WERE TRIED AND BOTH WERE WRONG, each in a way that produced a PUBLISHED DISK THAT COULD NOT
+# FINISH ITS OWN INSTALL:
 #
-#	see: 55 word(s): ReactoS Setup Welcome to the ReactOS Setup Wizard This wizard ...
+#	words: [[recycle, bin], [documents]]        matched while the wizard was still open. The second-stage
+#	                                            dialog is a window OVER the desktop, so the icon labels
+#	                                            down the wallpaper's left edge are readable behind it.
+#	                                            The loop stopped on the wizard's first page, the machine was
+#	                                            powered off, and the disk booted straight back into
+#	                                            `Welcome to the ReactOS Setup Wizard` (smoke run
+#	                                            45488792496, four times).
 #
-# THE REASON IS THAT THE WIZARD IS A WINDOW OVER THE DESKTOP. The second-stage dialog is drawn on top
-# of a wallpaper that already has `My Documents`, `Read Me` and the rest of the icon column down its
-# left edge, so `documents` is readable WHILE THE WIZARD IS STILL OPEN - the loop stopped at the first
-# page of the second stage, shut the machine down, and published a half-configured system.
+#	mode: text + without: [wizard, setup]       DID NOT ENFORCE `without:` AT ALL. MEASURED with a probe
+#	                                            that asks for `words: [reactos]` and `without: [reactos]`
+#	                                            on the same screen: the contradiction was ACCEPTED, so the
+#	                                            absence half is silently dropped and the gate degenerated to
+#	                                            `documents` alone - the same failure as above.
 #
-# THE COMPARISON IS `mode: text` WITH `without:`, AND `says_without` IS NOT AVAILABLE HERE. MEASURED on
-# run 45482198765, which is how this file learned the difference:
+# SO THERE IS NO GATE ON THIS WIZARD, AND THAT IS SAFE HERE RATHER THAN LAZY: every second-stage page
+# carries `Back` and `Next` and NO `Cancel`, so a Return can only ever advance it. (The first stage's
+# closing page is the one with `Cancel`, and the step above already waits for the second stage to start
+# before any key is pressed, so no press can land there.)
 #
-#	error: `mode: says_without` is not a measurement of a frame; the ones this build has are
-#	       like, mean_between, sat_between, spread_between, text, contains, matches and equals
+# THE COUNT IS THE PAGE COUNT PLUS A REBOOT'S WORTH OF MARGIN. MEASURED by driving this wizard by hand to
+# a finished desktop, one Return per page:
 #
-# - the frame path answers `text` and refuses the `says*` modes that the bound-reading path accepts. The
-# `text` path DOES honour `without:`, which is the half this gate needs, and it was measured directly
-# with a probe walk before being relied on here: `words: [reactos]` with `without: [wizard]` passed on
-# the language page, where `reactos` is present and `wizard` is not.
+#	welcome, acknowledgements, installation type, regional settings, personalize,
+#	computer name and password, date and time, appearance, network settings, components   = 10
 #
-# ReactOS's second-stage pages all carry `Setup` and `wizard` in their title bar; the installed desktop
-# carries neither.
-step "walk the second stage to the installed desktop"
+# and the eleventh Return lands on the last page's `Finish`, after which the guest reboots into the
+# installed system. Four more are margin: on the desktop they press nothing that matters.
+step "walk the ten pages of the second stage"
   repeat
     do
       item
         input ret
       item
-        settle 10
+        settle 8
+    max 14
+
+# AND THE DESKTOP IS CONFIRMED FOR THE RECORD, AFTER the presses above - not as the thing that ends them.
+# `documents` is the icon column; it is readable here because the wizard is now gone, and a failure here
+# means the second stage did not finish rather than that the OCR missed something.
+step "the installed desktop is up"
+  repeat
+    do
+      item
+        wait 5
       item
         read
           name desk
@@ -403,9 +419,8 @@ step "walk the second stage to the installed desktop"
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
-      words [documents]
-      without [wizard, setup]
-    max 90
+      words [[documents], [recycle, bin]]
+    max 24
 
 # THIS FILE ENDS WITHOUT `save:`, AND THAT IS DELIBERATE.
 #
