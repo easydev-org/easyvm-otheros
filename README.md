@@ -6,21 +6,28 @@ Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BS
 
 ## What lives here
 
-Two guests publish a **smoke** walk only, and for both that is the finding rather than an omission:
+Six guests, in two groups, and which group a guest is in is a finding rather than a preference.
 
-- Redox's installer cannot produce a disk (it fetches packages over a network the live image has no
-  repository for), so `scripts/assemble-redox-disk.py` builds one from the ISO's own partitions;
-- Debian publishes GNU/Hurd as a **finished disk image**, so there is nothing to install at all.
+**Two have a real `install.walk`** - an installer that partitions a disk, copies a system and writes a
+boot sector, driven step by step:
+
+```
+haiku/steps/install.walk      41 steps   DriveSetup: Intel map, BFS, then the Installer
+haiku/steps/smoke.walk         3 steps   boot the published disk, read the deskbar
+reactos/steps/install.walk    27 steps   the Setup Wizard, driven entirely by keyboard
+reactos/steps/smoke.walk       3 steps   boot the published disk, read the desktop
+```
+
+**Four publish a smoke walk only**, and each for its own measured reason:
+
+| guest | why there is no `install.walk` |
+| --- | --- |
+| Redox OS | its installer fetches packages over a network the live image has no repository for, so `scripts/assemble-redox-disk.py` builds a disk from the ISO's own partitions |
+| Debian GNU/Hurd | Debian publishes a **finished disk image**; there is nothing to install |
+| ToaruOS | one 7 MiB hybrid live image, no persistence, nothing to install |
+| Sculpt OS | a 41 MiB whole-disk image with its own GPT and boot loader |
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
-
-`toaru/steps/smoke.walk` and `sculpt/steps/smoke.walk` are smoke-only for the same kind of reason, and
-their own section below says what each medium is.
-
-**Haiku is the guest here that has a real `install.walk`.** Its r1beta5 installer works - it
-partitions, formats a Be File System, copies a system and writes a boot sector - so
-`haiku/steps/install.walk` drives it by clicking measured coordinates, and `haiku/steps/smoke.walk`
-boots what that install published.
 
 ## Haiku
 
