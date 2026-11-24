@@ -1,12 +1,13 @@
 # easyvm-otheros
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
-**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS** and **ReactOS** - driven by
+**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS**, **ReactOS** and
+**KolibriOS** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-Six guests, in two groups, and which group a guest is in is a finding rather than a preference.
+Seven guests, in two groups, and which group a guest is in is a finding rather than a preference.
 
 **Two have a real `install.walk`** - an installer that partitions a disk, copies a system and writes a
 boot sector, driven step by step:
@@ -18,7 +19,7 @@ reactos/steps/install.walk    28 steps   the Setup Wizard, driven entirely by ke
 reactos/steps/smoke.walk       3 steps   boot the published disk, read the desktop
 ```
 
-**Four publish a smoke walk only**, and each for its own measured reason:
+**Five publish a smoke walk only**, and each for its own measured reason:
 
 | guest | why there is no `install.walk` |
 | --- | --- |
@@ -26,6 +27,7 @@ reactos/steps/smoke.walk       3 steps   boot the published disk, read the deskt
 | Debian GNU/Hurd | Debian publishes a **finished disk image**; there is nothing to install |
 | ToaruOS | one 7 MiB hybrid live image, no persistence, nothing to install |
 | Sculpt OS | a 41 MiB whole-disk image with its own GPT and boot loader |
+| KolibriOS | a 99 MiB LiveCD that boots to a desktop in RAM; no installer, no persistence |
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
 
@@ -257,6 +259,45 @@ clean shutdown: what the guest wrote is on the host file before the next stage r
 reactos-0.4.16-install   28 steps   run 45496609390
 reactos-0.4.16-smoke      3 steps   run 45498403340   "the desktop is up [until]: read \"documents\""
 ```
+
+## KolibriOS
+
+KolibriOS is a 32-bit OS written almost entirely in FASM assembly - the `FASM` icon on its own menu is
+the assembler. It ships as a LiveCD that boots to a desktop in RAM: no installer, no login, no
+persistence.
+
+```
+kolibri/steps/smoke.walk    attach the ISO as a CD on pc, compare the menu bar, record the desktop
+```
+
+MEASURED: the ISO boots under KVM to its full desktop in well under a minute - the icon grid down both
+sides (`KFIFZ`, `EDITLE`, `KFAR`, `DEBUG`, `DBOARD`, `KPACK`, `DINO`, `CLICKS`, `TETRIS`, `SUDOKU`,
+`GOMOKU`, `KOSILKA`, `PONG`, `SEAWAR`, `MINE`), the `Menu` bar along the bottom with its `En` language
+badge and a clock, and a pixel-art wallpaper.
+
+### The witness is a picture, and that is the point
+
+KolibriOS's 8-pixel bitmap font defeats this OCR. MEASURED, the whole desktop reads as fragments:
+
+```
+kena
+TuNveAD
+ROSAVE
+PIPES.
+eOuITE
+FeeREAD
+```
+
+- which is every icon **label**, mis-read. A `words:` gate could only be tuned to what one tesseract
+version happened to hallucinate, and would break on the next.
+
+A desktop is a thing you recognise by sight, so the gate compares sight: `mode: like` crops the same
+rectangle from the live frame and from `reference/desktop.png` and scores them - **1.0000 similar** on
+the second attempt. The rectangle is the menu bar's left end (the green `Menu` button and the blue icon
+beside it), which never changes; the clock at the right end changes every minute and stays outside it.
+
+The reference is a **full 1024x768 frame**, not a cropped bar: `similarityInRect` crops the reference
+with the same `rect`, so a pre-cropped picture would be cut a second time and never match.
 
 ## Debian GNU/Hurd
 

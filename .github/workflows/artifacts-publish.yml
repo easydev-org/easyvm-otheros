@@ -113,6 +113,18 @@ jobs:
           # - a raw whole-disk image, not a CD, so the smoke walk attaches it as `ide-hd`. The digest
           # below is the one printed on genode.org's own download page for 26.10.
           - { tag: "disk-sculpt-26.10", group: "others", url: "https://genode.org/files/sculpt/sculpt-26-10.img", sha: "d4b8a81f3d927623fd2aef668abbcdc6502ca078d82e4d330f7a8e7509150a16", size: "42016768" }
+          # KOLIBRIOS IS A 32-BIT OS WRITTEN IN FASM, AND ITS LIVECD IS THE MEDIUM THIS REPOSITORY BOOTS.
+          #
+          # It publishes four shapes of the same nightly build (`.img` floppy, `.iso` LiveCD, `.raw`
+          # hybrid UEFI/BIOS, `.zip` manual) and its download page calls the ISO "the best choice for a
+          # beginner". MEASURED: that ISO boots on `pc` with KVM straight to its desktop in well under
+          # a minute - no installer, no login, no persistence.
+          #
+          # THE VERSION IS PINNED BY THE FILENAME AND THE DIGEST COMES FROM THE PROJECT'S OWN
+          # `sha256sums.txt` IN THE SAME DIRECTORY, so the medium booted next month is the medium
+          # booted here. A `latest/` URL would be tempting and wrong: this path names the build, and
+          # the sha below is what that file hashes to.
+          - { tag: "iso-kolibrios-0.7.7.0", group: "others", url: "https://builds.kolibrios.org/ci/latest/en_US/kolibrios-0.7.7.0-9261-g8d5545ae-en_US.iso", sha: "6e35d0d0936f662a9e962942f7ec5552cb236ee2d0846dc8bfa1378d63b8f7d4", size: "103766016" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

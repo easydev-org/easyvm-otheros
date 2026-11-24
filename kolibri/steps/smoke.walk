@@ -1,0 +1,79 @@
+# KOLIBRIOS BOOTS FROM ITS OWN LIVECD STRAIGHT TO A DESKTOP - THERE IS NOTHING TO INSTALL.
+#
+# KolibriOS is a 32-bit x86 OS written almost entirely in FASM assembly (its menu's `FASM` icon is the
+# assembler itself). It publishes four shapes of the same nightly build - `.img` for a floppy, `.iso`
+# for a CD, `.raw` for a hybrid UEFI/BIOS disk, and a `.zip` for manual installation - and this file
+# uses the **ISO**, attached as a CD, which is the shape its download page recommends for a beginner
+# and the one that needs no partition table prepared.
+#
+# MEASURED: the ISO boots on `pc` (i440fx) with KVM to its full desktop in well under a minute - the
+# icon grid down both sides (`KFIFZ`, `EDITLE`, `KFAR`, `DEBUG`, `DBOARD`, `KPACK`, `DINO`, `CLICKS`,
+# `TETRIS`, `SUDOKU`, `GOMOKU`, `KOSILKA`, `PONG`, `SEAWAR`, `MINE`), the `Menu` bar along the bottom
+# with its `En` language badge and a clock, and a pixel-art wallpaper. There is no installer, no login
+# and no persistence: it is a live system in RAM.
+#
+# THE WITNESS IS A PICTURE RATHER THAN WORDS, AND THIS GUEST IS WHY `mode: like` EXISTS.
+#
+# MEASURED: tesseract reads almost nothing off this desktop. Its 8-pixel bitmap font comes back as
+# fragments -
+#
+#	kena
+#	TuNveAD
+#	ROSAVE
+#	PIPES.
+#	eOuITE
+#	FeeREAD
+#
+# - which is every icon LABEL, mis-read. A `words:` gate here could only ever be tuned to whatever a
+# particular tesseract version happened to hallucinate, and it would break on the next one.
+#
+# A DESKTOP IS A THING YOU RECOGNISE BY SIGHT, so the gate compares sight: `mode: like` crops the same
+# rectangle from the live frame and from `reference/desktop.png` and scores them. The rectangle is the
+# `Menu` bar's left end - the green button and the blue icon beside it - which never changes, while the
+# clock at the right end changes every minute and must stay outside it.
+#
+# THE REFERENCE IS A FULL 1024x768 FRAME, NOT A CROPPED BAR. `similarityInRect` crops the reference
+# with the same `rect` as the frame, so a pre-cropped picture would be cut a second time and never
+# match.
+#
+# `-machine pc` AND NOT `q35`: KolibriOS's own download pages name nothing newer, its drivers are for
+# the classic i440fx board, and MEASURED it boots there. A CD on the primary IDE channel is `ide.1`,
+# which is where the boot CD of every BIOS guest here sits.
+walkthrough "kolibrios - the livecd reaches its desktop"
+resolution 1024x768
+recording_resolution 1024x768
+
+# THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never
+# touches it. The guest lives entirely on the CD; the disk is the engine's requirement, not the
+# guest's.
+step "an empty target disk, which this guest never writes"
+  disk
+    file disk.qcow2
+    size 1
+
+step "boot the livecd"
+  boot
+    machine "pc,accel=kvm"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=kolibrios.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    timeout 300
+
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name desk
+    until
+      source desk
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [0, 744, 140, 768]
+      rect_at [1024, 768]
+      must true
+    max 36
+
+step "record the desktop"
+  settle 30
