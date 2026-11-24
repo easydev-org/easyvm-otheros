@@ -361,6 +361,22 @@ step "the second stage has started, so no key can land on the first stage's canc
       words [[wizard], [personalize], [regional, settings], [appearance], [recycle, bin], [documents]]
     max 90
 
+# THE GATE NEEDS TWO FACTS, NOT ONE: THE DESKTOP IS UP **AND** THE WIZARD IS GONE.
+#
+# MEASURED, TWICE END TO END: with `words: [[recycle, bin], [documents]]` alone the install published a
+# disk that booted straight back into `Welcome to the ReactOS Setup Wizard`, and the smoke leg failed
+# four times on it:
+#
+#	see: 55 word(s): ReactoS Setup Welcome to the ReactOS Setup Wizard This wizard ...
+#
+# THE REASON IS THAT THE WIZARD IS A WINDOW OVER THE DESKTOP. The second-stage dialog is drawn on top
+# of a wallpaper that already has `My Documents`, `Read Me` and the rest of the icon column down its
+# left edge, so `documents` is readable WHILE THE WIZARD IS STILL OPEN - the loop stopped at the first
+# page of the second stage, shut the machine down, and published a half-configured system.
+#
+# `mode: says_without` IS THE ONE COMPARISON THAT CAN SAY "the wizard is over": `words:` must be
+# present and `without:` must be absent. ReactOS's second-stage pages all carry `Setup` and `wizard`
+# in their title bar, and the installed desktop carries neither.
 step "walk the second stage to the installed desktop"
   repeat
     do
@@ -373,11 +389,12 @@ step "walk the second stage to the installed desktop"
           name desk
     until
       source desk
-      mode text
+      mode says_without
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
-      words [[recycle, bin], [documents]]
+      words [documents]
+      without [wizard, setup]
     max 90
 
 # THIS FILE ENDS WITHOUT `save:`, AND THAT IS DELIBERATE.
