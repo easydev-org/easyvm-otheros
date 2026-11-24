@@ -104,6 +104,64 @@ def upload_blob(repo, path, digest, size, token):
         sys.exit("uploading the blob answered %d: %s" % (resp.status, body[:200]))
 
 
+def verify_published(repo, tag, digest, size, token):
+    """Read the manifest back and check the LAYER it advertises, by structure rather than by regex.
+
+    WHY A READ-BACK RATHER THAN TRUSTING THE PUT. The PUT answering 201 means the registry stored
+    SOMETHING; it does not mean the digest it stored is this script's, and it says nothing about
+    whether a puller can read the manifest at all. That second failure is not hypothetical - it is the
+    one that cost a CI round: a manifest pushed with Python's default `json.dumps` separators was
+    valid OCI and unreadable by `pull-artifact.sh`, whose patterns have no space after the colon.
+    MEASURED on run 45454429673: "the manifest for reactos-install has no digest or size" about a tag
+    that was there.
+
+    AND THE FIRST VERSION OF THIS CHECK WAS WRONG IN A WAY THAT MATTERS. It applied
+    `"digest":"(sha256:...)"` with `re.search`, which finds the CONFIG's digest first - the digest of
+    the empty `{}` document every OCI artifact carries - and reported a mismatch against a manifest
+    that was correct. `pull-artifact.sh` happens to survive the same shape because it parses a
+    ONE-LINE manifest with a GREEDY `.*`, which lands on the last match - the layer. That is luck
+    about field order, not a property to rely on, so this reads the JSON instead.
+
+    So: parse it, and assert what a puller will actually get - one layer, whose digest and size are
+    the file that was just uploaded.
+    """
+    conn = http.client.HTTPSConnection(REGISTRY, timeout=120)
+    conn.request("GET", "/v2/%s/manifests/%s" % (repo, tag), headers={
+        "Authorization": "Bearer " + token,
+        "Accept": "application/vnd.oci.image.manifest.v1+json"})
+    resp = conn.getresponse()
+    raw = resp.read()
+    conn.close()
+    if resp.status // 100 != 2:
+        sys.exit("reading the manifest back answered %d: %s" % (resp.status, raw[:300]))
+    try:
+        doc = json.loads(raw)
+    except ValueError as err:
+        sys.exit("the manifest that came back is not JSON (%s): %s" % (err, raw[:300]))
+
+    layers = doc.get("layers") or []
+    if len(layers) != 1:
+        sys.exit("the manifest that came back has %d layers, wanted exactly 1" % len(layers))
+    got, got_size = layers[0].get("digest"), layers[0].get("size")
+    if got != digest or got_size != size:
+        sys.exit("the layer that came back is %r (%r bytes), wanted %r (%r bytes)"
+                 % (got, got_size, digest, size))
+
+    # AND THE TWO PATTERNS THE PULLER USES MUST AGREE, because a manifest this script is happy with is
+    # useless if `pull-artifact.sh` reads it as "no digest or size". Applied to the SAME one-line form
+    # the registry returns, so the greedy match behaves as it will in the shell.
+    line = raw.decode("utf-8", "replace").replace("\n", "")
+    import re
+    m_digest = re.search(r'.*"digest":"(sha256:[a-f0-9]*)"', line)
+    m_size = re.search(r'.*"size":([0-9]*)', line)
+    if not m_digest or not m_size or m_digest.group(1) != digest or m_size.group(1) != str(size):
+        sys.exit("pull-artifact.sh's own patterns would read this manifest as digest %r size %r; "
+                 "the separators have spaces in them."
+                 % (m_digest.group(1) if m_digest else "",
+                    m_size.group(1) if m_size else ""))
+    print("verified: one layer, %s, %s bytes, and the puller's patterns agree" % (got, got_size))
+
+
 def put_manifest(repo, tag, manifest, token):
     conn = http.client.HTTPSConnection(REGISTRY, timeout=120)
     conn.request("PUT", "/v2/%s/manifests/%s" % (repo, tag), body=manifest, headers={
@@ -141,6 +199,7 @@ def main():
                     "annotations": {"org.opencontainers.image.title": os.path.basename(path)}}],
     }, separators=(",", ":")).encode()
     put_manifest(repo, tag, manifest, token)
+    verify_published(repo, tag, digest, size, token)
     print("pushed %s/%s:%s" % (REGISTRY, repo, tag))
 
 
