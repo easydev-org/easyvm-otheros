@@ -196,7 +196,8 @@ Two keyboard details cost real installs and are both in the file:
 - the **second stage is one loop, not ten Returns** - "Welcome to the ReactOS Setup Wizard" is drawn by
   *both* stages, so a gate on it fires on the first stage, and the page body says "installs ReactOS on
   your **computer**", so a gate on `computer` matched while the wizard was still on screen. The loop
-  presses Return and looks only for `Recycle Bin`, which the wizard never prints.
+  presses Return and looks only for the desktop's own icon labels (`Recycle Bin` or `Documents`),
+  which the wizard never prints.
 
 ### It cannot publish, and that is an engine defect
 
@@ -207,8 +208,8 @@ so the floor is always 512. `stage.yml` carries a second copy of the same check 
 
 So the disk the smoke leg pulls was **installed by that same walk and published by hand**, verified
 twice: `mdir -i disk.qcow2@@1M` shows `freeldr.sys`, `rosload.exe`, `ReactOS/`, `Program Files`; and
-the smoke walk boots it 3 of 3 steps locally. When #9 is fixed the install leg publishes directly and
-the smoke file needs no change, because the tag is already `reactos-install`.
+the smoke walk boots it 3 of 3 steps locally and 3 of 3 in CI. When #9 is fixed the install leg
+publishes directly and the smoke file needs no change, because the tag is already `reactos-install`.
 
 ## Debian GNU/Hurd
 
