@@ -58,6 +58,21 @@ jobs:
           disk-gb: '15'
           token: ${{ github.token }}
 
+      # THIS JOB ALSO NEEDS `qemu-img`, AND FOR THE SAME REASON THE ASSEMBLE JOB DID.
+      #
+      # MEASURED on run 45320710325: the pull succeeded - `disk.qcow2.tar complete (161751040 bytes)`
+      # - and then `/home/runner/work/_temp/...sh: line 9: qemu-img: command not found`, exit 127.
+      # This job runs `qemu-img info` as its own proof that the disk it published is an image, so the
+      # tools are installed rather than assumed.
+      - name: the image tools this job needs
+        run: |
+          set -eu
+          if ! command -v qemu-img >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq qemu-utils
+          fi
+          qemu-img --version
+
       - name: pull the assembled disk
         env:
           GITHUB_TOKEN: ${{ github.token }}
