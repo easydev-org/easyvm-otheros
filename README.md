@@ -213,10 +213,25 @@ A complete install is **415 MiB**, and the engine refuses to publish anything be
 artifact can say what small means, but nothing folds it into the `disk_min_mb` that `compress:` reads,
 so the floor is always 512. `stage.yml` carries a second copy of the same check with no override.
 
-So the disk the smoke leg pulls was **installed by that same walk and published by hand**, verified
-twice: `mdir -i disk.qcow2@@1M` shows `freeldr.sys`, `rosload.exe`, `ReactOS/`, `Program Files`; and
-the smoke walk boots it 3 of 3 steps locally and 3 of 3 in CI. When #9 is fixed the install leg
-publishes directly and the smoke file needs no change, because the tag is already `reactos-install`.
+So the disk the smoke leg pulls was **installed by that same walk and published by hand** - and the
+hand is written down, in `scripts/publish-disk.py`, so the artifact is reproducible from this
+repository rather than from somebody's shell history:
+
+```sh
+GITHUB_TOKEN=... python3 scripts/publish-disk.py disk.qcow2 easydev-org/easyvm-otheros reactos-install
+```
+
+That script exists because two details are easy to get wrong and were both measured: the blob must be
+the **qcow2 itself** (not a tar holding one, which is what `crane append` produces), and the manifest
+must have **no space after the colons** - `pull-artifact.sh` reads it with
+`sed 's/.*"digest":"\(sha256:[a-f0-9]*\)".*/\1/p'`, so Python's default `json.dumps` separators
+produce a valid manifest that the script cannot read (run 45454429673: "the manifest for
+reactos-install has no digest or size", about a tag that was there).
+
+The disk is verified twice: `mdir -i disk.qcow2@@1M` shows `freeldr.sys`, `rosload.exe`, `ReactOS/`,
+`Program Files`; and the smoke walk boots it 3 of 3 steps locally and 3 of 3 in CI. When #9 is fixed
+the install leg publishes directly and the smoke file needs no change, because the tag is already
+`reactos-install`.
 
 ## Debian GNU/Hurd
 
