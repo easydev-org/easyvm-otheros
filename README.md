@@ -206,20 +206,20 @@ Two keyboard details cost real installs and are both in the file:
   presses Return and looks only for the desktop's own icon labels (`Recycle Bin` or `Documents`),
   which the wizard never prints.
 
-### It cannot publish, and that is an engine defect
+### Installing it needs a hand-written job, because the engine will not publish a small disk
 
-A complete install is **415 MiB**, and the engine refuses to publish anything below 512 MiB.
-`easydev-org/easyvm#9` records it: `min_mb` is declared as a field of `stop:` and `disk:` so a small
-artifact can say what small means, but nothing folds it into the `disk_min_mb` that `compress:` reads,
-so the floor is always 512. `stage.yml` carries a second copy of the same check with no override.
+The walk itself is ordinary - it drives the wizard and stops the machine. What is not ordinary is the
+publishing step:
 
-So the disk the smoke leg pulls was **installed by that same walk and published by hand** - and the
-hand is written down, in `scripts/publish-disk.py`, so the artifact is reproducible from this
-repository rather than from somebody's shell history:
+A complete ReactOS 0.4.16 install is **415 MiB**, and the engine refuses to publish anything below
+512 MiB. `easydev-org/easyvm#9` records it: `min_mb` is declared as a field of `stop:` and `disk:` so a
+small artifact can say what small means, but nothing folds it into the `disk_min_mb` that `compress:`
+reads, so the floor is always 512. `stage.yml` carries a second copy of the same check with no override.
 
-```sh
-GITHUB_TOKEN=... python3 scripts/publish-disk.py disk.qcow2 easydev-org/easyvm-otheros reactos-install
-```
+So `reactos-0.4.16-install.yml` is a **hand-written job** rather than a `stage.yml` caller: it pulls the
+medium, starts ONE daemon, runs the same `reactos/steps/install.walk`, and then pushes
+`work/disk.qcow2` with `scripts/publish-disk.py`, which has no floor. Everything that matters is still
+the engine's - the walk is unmodified and the machine is the qemu its own `boot:` step describes.
 
 That script exists because two details are easy to get wrong and were both measured: the blob must be
 the **qcow2 itself** (not a tar holding one, which is what `crane append` produces), and the manifest
@@ -228,10 +228,35 @@ must have **no space after the colons** - `pull-artifact.sh` reads it with
 produce a valid manifest that the script cannot read (run 45454429673: "the manifest for
 reactos-install has no digest or size", about a tag that was there).
 
-The disk is verified twice: `mdir -i disk.qcow2@@1M` shows `freeldr.sys`, `rosload.exe`, `ReactOS/`,
-`Program Files`; and the smoke walk boots it 3 of 3 steps locally and 3 of 3 in CI. When #9 is fixed
-the install leg publishes directly and the smoke file needs no change, because the tag is already
-`reactos-install`.
+When #9 is fixed this file becomes a `stage.yml` caller with `out:`/`publish:`, the walk regains
+`save "{{ out }}"`, and the push step is deleted. The tag is already `reactos-install`, so the smoke leg
+needs no change either.
+
+### The one bug that cost the most: qemu's write cache
+
+MEASURED, and it looked like a dozen different problems before it was read properly. Every CI run
+produced a disk of **exactly 314,507,264 bytes** against 415 MiB on the pod, and the smoke leg booted it
+straight back into the second stage - or, on one run, into ReactOS's own dialog:
+
+```
+lisass.exe -Bad Image ... Try reinstalling the application using the ...
+```
+
+That is ReactOS reporting a DLL whose contents do not match what the loader expects: the files the
+first stage wrote were not the files the second stage read back. ReactOS reboots ITSELF between the two
+stages and qemu does not exit at that moment, so pages the guest had written could still be in qemu's
+cache when the second stage read the same file back through it.
+
+The fix is one argument - `cache=directsync` on the target - and the disk became 435,355,648 bytes,
+booted to its desktop, and passed the smoke leg. It is the same property Haiku's install needed from a
+clean shutdown: what the guest wrote is on the host file before the next stage reads it.
+
+### Both legs are green in CI
+
+```
+reactos-0.4.16-install   28 steps   run 45496609390
+reactos-0.4.16-smoke      3 steps   run 45498403340   "the desktop is up [until]: read \"documents\""
+```
 
 ## Debian GNU/Hurd
 
