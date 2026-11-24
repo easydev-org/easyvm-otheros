@@ -1,0 +1,88 @@
+# SCULPT OS REACHES ITS ADMINISTRATIVE UI, AND THAT UI IS THE DESKTOP THIS SYSTEM HAS.
+#
+# Sculpt is Genode Labs' general-purpose OS: a custom microkernel, capability-based security,
+# sandboxed device drivers and virtual machines. What it draws on boot is the "Leitzentrale" - a
+# top strip with `Files`, `Components` and `System`, and a live graph of the running components
+# joined by wires (`platform`, `vesa fb`, `ps2`, `ahci`, `gui`, `pointer`, `global keys`,
+# `leitzentrale`, `font`, `report logger`, `clipboard`, `network`, `ram fs`). MEASURED on this image:
+# that graph is what arrives, about twenty seconds in, and there is no separate "wallpaper desktop"
+# behind it.
+#
+# SO THE CLAIM IS THE LEITZENTRALE, NOT A TASKBAR. A stage that waited for a window manager would wait
+# for ever on a system whose whole user interface is this graph.
+#
+# THE MEDIUM IS THE PROJECT'S OWN 41 MiB DISK IMAGE, AND IT IS ATTACHED EXACTLY AS THEIR DOCS SAY.
+# genode.org's own "Running Sculpt 26.10 in Qemu" line is
+#
+#	qemu-system-x86_64 -display sdl -cpu Skylake-Client -machine q35 \
+#	                   -m 1024 -drive format=raw,file=sculpt-26-10.img \
+#	                   -netdev user,id=net0 -device e1000,netdev=net0
+#
+# - a RAW whole-disk image on q35, no CD, no floppy, and only 1 GiB of RAM. This file keeps all four
+# of those choices, because the image is a disk with its own GPT and boot loader rather than an
+# El Torito ISO.
+#
+# `-cpu Skylake-Client-v4` IS THE ENGINE'S FIXED MODEL AND SCULPT WANTS `Skylake-Client`; the -v4
+# suffix is a superset of that family, and MEASURED it boots. The documentation also warns that a
+# machine without NX/execution prevention "will just reboot on startup", which is why a boot that
+# flashes and restarts here would be a host fact rather than a media fact.
+#
+# THE WITNESS IS THE LEITZENTRALE'S OWN LABELS. MEASURED, the frame yields `Diagnostics`, `Hardware`,
+# `event filter`, `pointer` as text at 1024x768 - all plain UI text on dark panels.
+#
+# `diagnostics` ALONE, AND THAT IS DELIBERATE. MEASURED on the live frame: `leitzentrale` is a small
+# label inside the graph and tesseract DROPS it, while `Diagnostics` - the heading of the bottom-left
+# panel - is read at every attempt. `Hardware` is read too, but it sits in the upper graph where a
+# different crop or scale can lose it, so the gate asks for the one label that is in a fixed corner.
+#
+# A GATE NEEDS ONE WORD IT CANNOT MISS, NOT A PAIR IT HOPES TO SEE. The Haiku welcome dialog taught
+# the same lesson from the other side: its title tab was unreadable while its body was, and a gate on
+# the title sat out its whole budget on a working system.
+#
+# THE RECTANGLE IS THE PANEL, NOT THE FRAME, AND THAT IS MEASURED RATHER THAN TIDY. MEASURED: the
+# whole 1024x768 frame enlarged three times reads the panel as
+#
+#	see: 12 word(s): * seeuettte te Zz GENODE blueprint query requires depot ...
+#
+# - the label survives but the surrounding caption turns to noise, and the word `diagnostics` is not
+# among the twelve. The same frame cropped to the panel's own 320x80 corner reads `Diagnostics` on
+# every attempt. A small frame is not a reason to read all of it; it is the reason to read less.
+walkthrough "sculpt os - the leitzentrale comes up"
+resolution 1024x768
+recording_resolution 1024x768
+
+# THE MACHINE BOOTS FROM `sculpt.img` ITSELF, WHICH IS A WHOLE DISK. The engine still refuses a
+# `boot:` with no target, so an empty qcow2 is created and left alone - it is the engine's
+# requirement, and `sculpt0` is what the image is attached as so the two cannot collide.
+step "an empty target disk, which this guest never writes"
+  disk
+    file disk.qcow2
+    size 1
+
+step "boot the published image"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-drive", "file=sculpt.img,media=disk,format=raw,if=none,id=sculpt0"], ["-device", "ide-hd,drive=sculpt0,bus=ide.0,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0"]]
+    timeout 300
+
+# THE GRAPH IS DRAWN PROGRESSIVELY - components appear as their init order completes - so the loop
+# waits for the panel that is drawn last rather than for any one component.
+step "the leitzentrale is up"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 660, 320, 740]
+      rect_at [1024, 768]
+      scale 3
+      words [[diagnostics]]
+    max 36
+
+step "record the desktop"
+  settle 30

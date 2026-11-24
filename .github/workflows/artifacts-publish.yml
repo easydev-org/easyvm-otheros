@@ -76,6 +76,26 @@ jobs:
           # a 2.8 MiB ESP with `EFI/BOOT/BOOTX64.EFI`. The install leg boots it as a CD on `ahci.1`;
           # the smoke leg never sees it at all.
           - { tag: "iso-haiku-r1beta5", group: "others", url: "https://mirrors.osuosl.org/pub/haiku/r1beta5/haiku-r1beta5-x86_64-anyboot.iso", sha: "22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69", size: "1477246976" }
+          # TOARUOS PUBLISHES ONE FILE PER RELEASE AND CALLS IT `image.iso` - A HYBRID, NOT A PLAIN
+          # ISO. MEASURED: LBA 0 holds a boot sector and offset 32769 holds the ISO9660 catalog
+          # (`CD001`), so the same 7 MiB file boots as a CD on q35's AHCI controller and reaches
+          # ToaruOS's desktop with no partition table to prepare. That is the whole guest: there is
+          # nothing to install, so this repository publishes the medium and a smoke walk.
+          #
+          # THE VERSION IS IN THE TAG BECAUSE THE FILENAME IS NOT. Every release is `image.iso`, so a
+          # tag without one would say nothing about what it holds; `iso-toaruos-2.3.2` names the
+          # release, and the size below is what distinguishes it from 2.0.0 (15,081,472 bytes).
+          - { tag: "iso-toaruos-2.3.2", group: "others", url: "https://github.com/klange/toaruos/releases/download/v2.3.2/image.iso", sha: "b1dc51bd48f2b4613237185c9acb1a9beb13ab6acdd2e01d9722f77343e4c9ea", size: "7483392" }
+          # SCULPT OS IS A 41 MiB RAW DISK IMAGE WITH ITS OWN GPT AND BOOT LOADER, and Genode Labs
+          # publish the QEMU line that boots it:
+          #
+          #	qemu-system-x86_64 -display sdl -cpu Skylake-Client -machine q35 \
+          #	                   -m 1024 -drive format=raw,file=sculpt-26-10.img \
+          #	                   -netdev user,id=net0 -device e1000,netdev=net0
+          #
+          # - a raw whole-disk image, not a CD, so the smoke walk attaches it as `ide-hd`. The digest
+          # below is the one printed on genode.org's own download page for 26.10.
+          - { tag: "disk-sculpt-26.10", group: "others", url: "https://genode.org/files/sculpt/sculpt-26-10.img", sha: "d4b8a81f3d927623fd2aef668abbcdc6502ca078d82e4d330f7a8e7509150a16", size: "42016768" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

@@ -1,0 +1,59 @@
+name: toaruos-2.3.2-smoke
+
+# DOES TOARUOS REACH ITS DESKTOP FROM ITS OWN MEDIUM? Boot it, read the tutorial window, record it.
+#
+# THIS GUEST HAS NO INSTALL LEG AND DOES NOT NEED ONE. ToaruOS ships as a single 7 MiB live image -
+# a "live CD" in its own words, with an in-memory read-write filesystem and no persistence between
+# boots - so there is no partition table to write and no installer to drive. The claim worth
+# publishing is that the medium boots on OUR machine and reaches the desktop, and this stage is the
+# whole of it.
+#
+# THE MEDIUM IS HYBRID, AND THAT IS WHY IT IS ATTACHED AS A CD. MEASURED: LBA 0 holds a boot sector
+# and offset 32769 holds the ISO9660 catalog, so the same file can be handed to qemu as a CD. That is
+# also what the project's own README recommends:
+#
+#	qemu-system-x86_64 -cdrom image.iso -m 1G -device AC97 -enable-kvm
+#
+# The AC97 line is dropped because the walk does not exercise audio; everything else is kept.
+#
+# THE WITNESS IS THE TUTORIAL WINDOW. MEASURED, a 1024x768 frame yields `Applications Welcome to
+# ToaruOS!` in the menubar and `This tutorial will guide you through the features of the operating`
+# in the window - plain UI text on light backgrounds. `toaruos` is a word no boot loader or iPXE
+# banner produces, which is what makes it a gate rather than a hope.
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: toaruos-2.3.2-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: toaruos-2.3.2-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "toaru-smoke",
+            "file": "toaru/steps/smoke.walk",
+            "assets": ["iso-toaruos-2.3.2:toaru.iso.tar"],
+            "pull": "",
+            "out": "",
+            "timeout": 20
+          }
+        ]

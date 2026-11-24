@@ -1,7 +1,7 @@
 # easyvm-otheros
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
-**Haiku**, **Redox OS** and **Debian GNU/Hurd** - driven by
+**Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS** and **Sculpt OS** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
@@ -13,6 +13,9 @@ Two guests publish a **smoke** walk only, and for both that is the finding rathe
 - Debian publishes GNU/Hurd as a **finished disk image**, so there is nothing to install at all.
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
+
+`toaru/steps/smoke.walk` and `sculpt/steps/smoke.walk` are smoke-only for the same kind of reason, and
+their own section below says what each medium is.
 
 **Haiku is the guest here that has a real `install.walk`.** Its r1beta5 installer works - it
 partitions, formats a Be File System, copies a system and writes a boot sector - so
@@ -78,6 +81,76 @@ files would need every one of them doubled.
 welcome dialog's crop - the reading starts at `Esperanto` and runs on through `Thank you for trying
 out Haiku!`. A `words: [[welcome]]` gate therefore never fires. The walk waits on `thank`, `trying`
 and `haiku`, which are plain words on a white background.
+
+## ToaruOS
+
+ToaruOS 2.3.2 ships as a single 7.2 MiB live image and needs no installation at all - its own release
+notes describe it as a "live CD" with an in-memory read-write filesystem and no persistence between
+boots. So this repository publishes the medium and one smoke walk:
+
+```
+toaru/steps/smoke.walk    attach the image as a CD, read the tutorial window, record the desktop
+```
+
+The image is **hybrid**: LBA 0 holds a boot sector and offset 32769 holds the ISO9660 catalog
+(`CD001`), so the same file boots from a CD. That is what the project recommends:
+
+```sh
+qemu-system-x86_64 -cdrom image.iso -m 1G -device AC97 -enable-kvm
+```
+
+MEASURED, and the failures are worth recording because each one looks like "ToaruOS does not boot":
+
+| attachment | result |
+|---|---|
+| `-device floppy` | qemu exits before its QMP socket - a `floppy` needs an `isa-fdc` controller q35 does not carry |
+| `-drive file=toaru.iso,if=ide` (hard disk) | the firmware finds no El Torito catalog and falls through to iPXE, then `No bootable device` |
+| `media=cdrom` on `ahci.1` | boots to the desktop |
+
+The desktop is the ToaruOS menubar (`Applications`, `Welcome to ToaruOS!`) and a tutorial window; the
+walk reads for `toaruos`, a word no boot banner produces.
+
+## Sculpt OS
+
+Sculpt OS 26.10 is Genode Labs' general-purpose OS - a custom microkernel, capability-based security,
+sandboxed drivers and virtual machines. It is a **41 MiB whole-disk image** with its own GPT and boot
+loader, so it too has no install leg:
+
+```
+sculpt/steps/smoke.walk    attach the image as a hard disk, read the Leitzentrale, record it
+```
+
+### Its desktop is the Leitzentrale, and that is not a taskbar
+
+What Sculpt draws is a top strip with `Files`, `Components` and `System`, a live graph of running
+components joined by wires (`platform`, `vesa fb`, `ps2`, `ahci`, `gui`, `pointer`, `leitzentrale`,
+`font`, `report logger`, `clipboard`, `network`, `ram fs`), and a `Diagnostics` panel in the lower
+left. There is no wallpaper desktop behind it - the administrative UI **is** the system's interface,
+so a stage waiting for a window manager would wait for ever.
+
+Genode's own QEMU line is what the walk uses:
+
+```sh
+qemu-system-x86_64 -display sdl -cpu Skylake-Client -machine q35 \
+                   -m 1024 -drive format=raw,file=sculpt-26-10.img \
+                   -netdev user,id=net0 -device e1000,netdev=net0
+```
+
+q35, **one** GiB of RAM, a raw image attached as a disk (not a CD), and an e1000 on user networking.
+The engine fixes `-cpu Skylake-Client-v4`, a superset of the `Skylake-Client` the docs name.
+
+### The gate reads the panel, not the frame
+
+MEASURED: the whole 1024x768 frame enlarged three times reads the Leitzentrale as
+
+```
+see: 12 word(s): * seeuettte te Zz GENODE blueprint query requires depot ...
+```
+
+- `diagnostics` is not among the twelve words. The same frame cropped to the panel's own corner
+(`rect [0, 660, 320, 740]` at `scale 3`) reads `Diagnostics` on every attempt. A small frame is not a
+reason to read all of it; it is the reason to read less. `leitzentrale` is a small label inside the
+graph and tesseract drops it entirely, so the gate names the one label in a fixed corner.
 
 ## Debian GNU/Hurd
 

@@ -1,0 +1,65 @@
+name: sculpt-26.10-smoke
+
+# DOES SCULPT OS COME UP? Boot the project's own disk image, read the Leitzentrale, record it.
+#
+# NO INSTALL LEG, AND THAT IS THE FINDING. Genode Labs publish Sculpt as a 41 MiB whole-disk image
+# with its own GPT and boot loader; their documentation calls the same image the way to get a computer
+# that "boots directly into Sculpt OS". There is no installer to drive and nothing to partition, so
+# the claim this repository can make about Sculpt is that its medium boots on OUR machine and reaches
+# its user interface.
+#
+# THAT INTERFACE IS THE LEITZENTRALE, NOT A WALLPAPER DESKTOP. What Sculpt draws is a top strip with
+# `Files`, `Components` and `System`, a live graph of running components joined by wires, and a
+# `Diagnostics` panel - the administrative UI is the desktop this system has.
+#
+# THE MACHINE IS EXACTLY WHAT GENODE'S OWN DOCS RECOMMEND, because their line is short and specific:
+#
+#	qemu-system-x86_64 -display sdl -cpu Skylake-Client -machine q35 \
+#	                   -m 1024 -drive format=raw,file=sculpt-26-10.img \
+#	                   -netdev user,id=net0 -device e1000,netdev=net0
+#
+# - q35, ONE GiB of RAM, a RAW whole-disk image and an e1000 on user-mode networking. The engine fixes
+# `-cpu Skylake-Client-v4`, a superset of the `Skylake-Client` the docs name, and MEASURED it boots.
+#
+# THE IMAGE IS ATTACHED AS `ide-hd`, NOT AS A CD: it is a disk, not an El Torito ISO, and a CD
+# attachment gives the firmware no catalog to follow.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish" and the artifact is
+# the recording. The image is read-only input; nothing here writes to it.
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: sculpt-26.10-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: sculpt-26.10-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "sculpt-smoke",
+            "file": "sculpt/steps/smoke.walk",
+            "assets": ["disk-sculpt-26.10:sculpt.img.tar"],
+            "pull": "",
+            "out": "",
+            "timeout": 20
+          }
+        ]

@@ -1,0 +1,68 @@
+# TOARUOS BOOTS FROM ITS OWN HYBRID IMAGE STRAIGHT TO A DESKTOP - THERE IS NOTHING TO INSTALL.
+#
+# ToaruOS publishes a single 7.2 MiB "iso" that is really a HYBRID: a boot sector at LBA 0 and an
+# ISO9660 catalog at offset 32769. MEASURED: attached as `media=cdrom` on q35's AHCI controller it
+# boots to its desktop with no partition table to prepare and no installer to drive - Applications
+# menu, File Browser, Terminal, Packages, Read Me, and a `Welcome to ToaruOS!` tutorial window. So
+# this repository's job for this guest is the smoke claim and only the smoke claim.
+#
+# IT IS ATTACHED AS A CD, NOT AS A FLOPPY AND NOT AS A HARD DISK. MEASURED, in order:
+#
+#	-device floppy,drive=fd            qemu exits before its QMP socket: a `floppy` device needs an
+#	                                   `isa-fdc` controller on the bus and q35 has none by default
+#	-drive file=toaru.iso,if=ide       the firmware finds no El Torito catalog on that bus and falls
+#	                                   through to iPXE, then "No bootable device"
+#	media=cdrom on ahci.1              boots, which is what this file does
+#
+# `-cpu Skylake-Client-v4` IS FIXED BY THE ENGINE for every guest here; ToaruOS is x86_64 and takes
+# it. 1024x768 at `vgamem_mb=16` is enough - MEASURED, the guest draws its own desktop at that size
+# and the whole tutorial window is inside the frame.
+#
+# THE WITNESS IS THE TUTORIAL WINDOW AND THE MENUBAR, read as text. Both are plain UI text on light
+# backgrounds, which is what this OCR reads well: MEASURED, the frame yields
+#
+#	Applications Welcome to ToaruOS!
+#	Welcome to ToaruOS!
+#	This tutorial will guide you through the features of the operating
+#
+# so `toaruos` alone is a phrase no boot screen can produce.
+walkthrough "toaruos - the hybrid image reaches its desktop"
+resolution 1024x768
+recording_resolution 1024x768
+
+# THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never
+# touches it. The guest lives entirely on the CD; the disk is the engine's requirement, not the
+# guest's, and 1 GiB is enough to be a legal qcow2.
+step "an empty target disk, which this guest never writes"
+  disk
+    file disk.qcow2
+    size 1
+
+step "boot the published medium"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file=toaru.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ahci.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0"]]
+    timeout 300
+
+# THE DESKTOP ARRIVES IN ABOUT THIRTY SECONDS. The loop is generous because a first boot with no
+# writable disk does its setup in memory, and a single reading of a half-drawn window would be a
+# false negative.
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 0, 1024, 768]
+      rect_at [1024, 768]
+      scale 1
+      words [[toaruos]]
+    max 36
+
+step "record the desktop"
+  settle 30
