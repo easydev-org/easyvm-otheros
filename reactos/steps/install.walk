@@ -51,7 +51,7 @@ step "create the empty disk"
 step "boot the installer"
   boot
     machine "pc,accel=kvm"
-    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=reactos.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-drive", "file=disk.qcow2,if=ide,index=0,media=disk,format=qcow2,id=target"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "2048"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-drive", "file=reactos.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-drive", "file=disk.qcow2,if=ide,index=0,media=disk,format=qcow2,cache=directsync,id=target"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
     timeout 900
 
 # THE GATE IS ONE WORD THAT SURVIVES OCR, AND THREE EARLIER GATES DID NOT. MEASURED, on a page that
