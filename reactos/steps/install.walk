@@ -374,9 +374,19 @@ step "the second stage has started, so no key can land on the first stage's canc
 # left edge, so `documents` is readable WHILE THE WIZARD IS STILL OPEN - the loop stopped at the first
 # page of the second stage, shut the machine down, and published a half-configured system.
 #
-# `mode: says_without` IS THE ONE COMPARISON THAT CAN SAY "the wizard is over": `words:` must be
-# present and `without:` must be absent. ReactOS's second-stage pages all carry `Setup` and `wizard`
-# in their title bar, and the installed desktop carries neither.
+# THE COMPARISON IS `mode: text` WITH `without:`, AND `says_without` IS NOT AVAILABLE HERE. MEASURED on
+# run 45482198765, which is how this file learned the difference:
+#
+#	error: `mode: says_without` is not a measurement of a frame; the ones this build has are
+#	       like, mean_between, sat_between, spread_between, text, contains, matches and equals
+#
+# - the frame path answers `text` and refuses the `says*` modes that the bound-reading path accepts. The
+# `text` path DOES honour `without:`, which is the half this gate needs, and it was measured directly
+# with a probe walk before being relied on here: `words: [reactos]` with `without: [wizard]` passed on
+# the language page, where `reactos` is present and `wizard` is not.
+#
+# ReactOS's second-stage pages all carry `Setup` and `wizard` in their title bar; the installed desktop
+# carries neither.
 step "walk the second stage to the installed desktop"
   repeat
     do
@@ -389,7 +399,7 @@ step "walk the second stage to the installed desktop"
           name desk
     until
       source desk
-      mode says_without
+      mode text
       rect [0, 0, 800, 600]
       rect_at [800, 600]
       scale 1
