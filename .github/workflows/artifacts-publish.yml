@@ -136,6 +136,17 @@ jobs:
           # is the ABIv11 release that axrt.org distributes. The size is checked as well, so a changed
           # build is a refused push rather than a silent substitution.
           - { tag: "iso-aros-202609", group: "others", url: "https://www.axrt.org/download/aros/v11/AROS-202609-pc-x86_64-boot-iso.zip", sha: "4d405e07b597d8d43964548b54b7c38dc4becaac6c6d681ad341567770fa007f", size: "122819457" }
+          # 9FRONT IS A PLAN 9 FORK AND PUBLISHES ITS LIVECD AS `.iso.gz` - WHICH IS WHY THE
+          # DECOMPRESS STEP ALREADY HANDLES THAT SUFFIX: qemu cannot open a gzip stream and a
+          # walkthrough cannot run `gunzip`, so the unpacking is preparation and it happens here.
+          #
+          # MEASURED: `9front-11952.amd64.iso` is 504,643,584 bytes and boots on `pc` to a console
+          # that hands over to Rio. The kernel is Plan 9's own, so the walk answers `bootargs` and
+          # `user[glenda]` with Return and then proves the shell with a marker it echoes back.
+          #
+          # THE DIGEST BELOW IS OF THE `.gz` AS PUBLISHED, so the compressed file is what is checked -
+          # `9front.org/iso/` names the build in the filename, and this is build 11952.
+          - { tag: "iso-9front-11952", group: "others", url: "https://9front.org/iso/9front-11952.amd64.iso.gz", sha: "59ba79f1304f02c1aae573b337fa2569fc78027ce8e4c2056c4117e971025b91", size: "250764788" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

@@ -1,0 +1,69 @@
+name: 9front-11952-smoke
+
+# DOES 9FRONT REACH A WORKING SHELL? Boot the LiveCD, answer its two console prompts, and ask the
+# shell a question only a running system can answer.
+#
+# 9FRONT IS A FORK OF PLAN 9 FROM BELL LABS - a distributed OS whose "desktop" is Rio, a window system
+# where the screen is a filesystem. It publishes a LiveCD as `.iso.gz`; this repository unpacks it at
+# publication time, because qemu cannot open a gzip stream and a walkthrough cannot run `gunzip`.
+#
+# THE KEYBOARD IS PS/2 AND THERE IS NO USB DEVICE AT ALL. THIS IS THE FINDING THAT COST THE FIRST
+# ROUND. MEASURED with `-device piix3-usb-uhci` + `usb-kbd` + `usb-tablet`, the kernel printed
+#
+#	nusb/usbd: ... descr. too small
+#	nusb/usbd: no hubs
+#
+# on every boot and NOT ONE KEYSTROKE reached the console - the walk sat on `bootargs` while the machine
+# was plainly waiting for input. With no `usb-*` device at all, `pc`'s own i8042 controller takes the
+# keyboard and both prompts answer. Plan 9's USB stack is young; the Hurd walk records the same thing.
+#
+# THE WITNESS IS A MARKER THE SHELL ECHOES, NOT A SCREEN STATE. The console's last lines are drawn at
+# the bottom of an 80x25 text screen that this OCR reads only partially, so a gate on `monitor is` or
+# `vesa` sees a truncated frame even when those rows are on screen - MEASURED:
+#
+#	error: none of "vesa" in "Ox0060e000 Ox1IcdbOOO 426561536 427139072 bytes free pcirouting: ..."
+#
+# So the loop does what a person would: type the command, press Return, look for it echoed. While the
+# console is still a log the text is swallowed; once init hands over to `/bin/rc` the shell echoes it
+# back. MEASURED on the pod: satisfied after 3 attempt(s), and the first attempt's reading was still
+# the kernel's `aux/vga: controller not in /libsygadb` line.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish" and the artifact is
+# the recording.
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the media"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: 9front-11952-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: 9front-11952-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "ninefront-smoke",
+            "file": "ninefront/steps/smoke.walk",
+            "assets": ["iso-9front-11952:9front.iso.tar"],
+            "pull": "",
+            "out": "",
+            "timeout": 25
+          }
+        ]

@@ -2,12 +2,12 @@
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
 **Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS**, **ReactOS**,
-**KolibriOS** and **AROS** - driven by
+**KolibriOS**, **AROS** and **9front** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-Eight guests, in two groups, and which group a guest is in is a finding rather than a preference.
+Nine guests, in two groups, and which group a guest is in is a finding rather than a preference.
 
 **Two have a real `install.walk`** - an installer that partitions a disk, copies a system and writes a
 boot sector, driven step by step:
@@ -19,7 +19,7 @@ reactos/steps/install.walk    28 steps   the Setup Wizard, driven entirely by ke
 reactos/steps/smoke.walk       3 steps   boot the published disk, read the desktop
 ```
 
-**Six publish a smoke walk only**, and each for its own measured reason:
+**Seven publish a smoke walk only**, and each for its own measured reason:
 
 | guest | why there is no `install.walk` |
 | --- | --- |
@@ -29,6 +29,7 @@ reactos/steps/smoke.walk       3 steps   boot the published disk, read the deskt
 | Sculpt OS | a 41 MiB whole-disk image with its own GPT and boot loader |
 | KolibriOS | a 99 MiB LiveCD that boots to a desktop in RAM; no installer, no persistence |
 | AROS | a 455 MiB live `boot-iso` for the AmigaOS 3.1 API; it carries an installer, but the claim here is that the system comes up |
+| 9front | a Plan 9 LiveCD published as `.iso.gz`; boots to a console that hands over to Rio |
 
 `scripts/assemble-redox-disk.py` is what the `assemble` job in `artifacts-publish.yml` runs.
 
@@ -324,6 +325,44 @@ corner where the `aros` wordmark is drawn. **1.0000 similar** on the second atte
 
 The reference is a full 1024x768 frame, because `similarityInRect` crops the reference with the same
 `rect`.
+
+## 9front (Plan 9)
+
+9front is a fork of Plan 9 from Bell Labs - a distributed OS whose "desktop" is Rio, a window system
+where the screen is a filesystem. Its LiveCD is published as `.iso.gz`:
+
+```
+ninefront/steps/smoke.walk    attach the ISO as a CD on pc, answer two prompts, prove the shell
+```
+
+The walk answers `bootargs` and `user[glenda]` with Return (both defaults are right for the CD), then
+types a marker into the shell and reads it back - `echo 9front-livecd-reached-the-shell`. That string is
+the witness: it comes back only if a **shell** ran it.
+
+### The keyboard is PS/2, with no USB device at all
+
+This is the finding that cost the first round. MEASURED with `-device piix3-usb-uhci` + `usb-kbd` +
+`usb-tablet`, the kernel printed on every boot:
+
+```
+nusb/usbd: ... descr. too small
+nusb/usbd: no hubs
+```
+
+and **not one keystroke** reached the console - the walk sat on `bootargs` while the machine was plainly
+waiting for input. With no `usb-*` device at all, `pc`'s own i8042 controller takes the keyboard and both
+prompts answer. Plan 9's USB stack is young; the Hurd walk records the same thing from the other side.
+
+### The gate is a marker, not a screen state
+
+The console's last lines are drawn at the bottom of an 80x25 text screen that this OCR reads only
+partially, so a gate on `monitor is` or `vesa` sees a truncated frame even when those rows are on screen
+- MEASURED: `none of "vesa" in "Ox0060e000 Ox1IcdbOOO ... pcirouting: ..."`.
+
+So the loop does what a person would: type the command, press Return, look for it echoed. While the
+console is still a log the text is swallowed; once init hands over to `/bin/rc` the shell echoes it.
+**Satisfied after 3 attempt(s)** on the pod, and the first attempt's reading was still the kernel's
+`aux/vga: controller not in /libsygadb` line.
 
 ## Debian GNU/Hurd
 

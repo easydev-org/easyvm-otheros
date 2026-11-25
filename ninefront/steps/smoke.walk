@@ -1,0 +1,176 @@
+# 9FRONT (PLAN 9) BOOTS FROM ITS LIVECD TO ITS RIO DESKTOP - THERE IS NOTHING TO INSTALL.
+#
+# 9front is a fork of Plan 9 from Bell Labs: a distributed OS whose "desktop" is Rio, a window system
+# where the whole screen is a filesystem you can write to. The published `.amd64.iso.gz` is a live
+# system - MEASURED, it boots to `init: starting /bin/rc` and announces its monitor as
+# `[1024x768x16] x monitor is (vesa, xga, lcd, ...) [vesa]`, which is Rio coming up.
+#
+# THE GUEST ASKS TWO QUESTIONS AT THE CONSOLE AND BOTH ARE ANSWERED WITH RETURN: `bootargs` (whose
+# default is already this CD - `local!/dev/sdD0/data`) and `user[glenda]`. MEASURED, `cat /dev/null`
+# would do as well; what matters is that a newline reaches the console.
+#
+# THE KEYBOARD IS PS/2 AND THE USB ONE IS DELIBERATELY ABSENT - THIS IS THE ONE THING THAT COST A
+# ROUND. MEASURED with `-device piix3-usb-uhci` + `usb-kbd` + `usb-tablet`: the kernel printed
+#
+#	nusb/usbd: ... descr. too small
+#	nusb/usbd: no hubs
+#
+# on every boot and not one keystroke ever reached the prompt, so the walk sat on `bootargs` while the
+# machine was plainly waiting for input. With no `usb-*` device at all, `pc`'s own i8042 controller
+# takes the keyboard and both prompts answer. That is the same finding the Hurd walk records, from the
+# other direction: a guest whose USB stack is young wants PS/2.
+#
+# THE WITNESS IS A LINE THE SHELL ECHOES. A login prompt and a live shell both draw `user[glenda]:`, so
+# the walk types a marker into the shell and reads the marker back:
+#
+#	echo 9front-livecd-reached-the-shell
+#
+# - a string nothing else on this screen produces. It is the same shape as the Hurd walk's `uname -a`:
+# ask the system a question whose answer only a running system can give.
+#
+# THE ISO ARRIVES AS `.gz` AND IS UNPACKED BY THE PUBLISH STEP, because qemu cannot open a gzip stream
+# and a walkthrough cannot run `gunzip`. What a stage pulls is a tar holding `9front.iso`.
+walkthrough "9front - the livecd reaches its shell"
+resolution 1024x768
+recording_resolution 1024x768
+
+# THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never touches
+# it. The guest lives entirely on the CD.
+step "an empty target disk, which this guest never writes"
+  disk
+    file disk.qcow2
+    size 1
+
+step "boot the livecd"
+  boot
+    machine "pc,accel=kvm"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-drive", "file=9front.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    timeout 400
+
+step "the bootargs prompt is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name b
+    until
+      source b
+      mode text
+      rect [0, 0, 720, 400]
+      rect_at [720, 400]
+      scale 1
+      words [[bootargs]]
+    max 40
+
+# THE DEFAULT IS THE CD ITSELF, so a bare Return is the whole answer. Typing it out would work too and
+# would say which device - but `local!/dev/sdD0/data` contains a `!` and a `/`, and a walk that types it
+# is a walk that breaks when the CD becomes `sdE0`.
+step "accept the default boot device"
+  input ret
+  settle 10
+
+step "the user prompt is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name u
+    until
+      source u
+      mode text
+      rect [0, 0, 720, 400]
+      rect_at [720, 400]
+      scale 1
+      words [[glenda]]
+    max 40
+
+step "accept the default user"
+  input ret
+  settle 15
+
+# THE GATE IS `starting dns resolver`, NOT `starting /bin/rc`, AND THAT IS MEASURED.
+#
+# `init: starting /bin/rc` is the line that says the SYSTEM, not the boot loader, is running - but
+# tesseract returns it as `init: starting /binsre`, because this console font's `/` and `/r` run
+# together. The next line, `starting dns resolver on /net`, is drawn in the same font at the same size
+# and is read correctly, so that is the gate.
+step "the system is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name init
+    until
+      source init
+      mode text
+      rect [0, 0, 720, 400]
+      rect_at [720, 400]
+      scale 1
+      words [[starting, dns, resolver]]
+    max 40
+
+# THE CONSOLE HAS TO FINISH ITS BOOT MESSAGES BEFORE ANYTHING IS TYPED, AND THAT IS MEASURED.
+#
+# MEASURED: an earlier version typed this marker as soon as `starting dns resolver` appeared, and the
+# characters landed INSIDE the line `vgasize is (...) [1024x768x16] monitor is (vesa, xga, lcd, ...)` -
+# which is the kernel still printing. The console had not yet become a shell prompt, so the text was
+# eaten by the log rather than echoed back, and the gate then sat out its whole budget on a system that
+# was working perfectly.
+#
+# `vesa` IS THAT POINT, AND BOTH EARLIER GATES WERE TOO EARLY.
+#
+# `starting dns resolver` appears while the kernel is still announcing itself, and MEASURED an earlier
+# version typed its marker right after it - the characters landed INSIDE the next line,
+#
+#	vgasize is (text, 640x480x8, 1024x768x16, ...) [1024x768x16] echo 9front-livec...
+#
+# so the console was a log, not a prompt, and the text was swallowed. `monitor is` is the last half of
+# that same `vgasize` sentence and IS read once Rio takes the screen, followed by a cursor - which is
+# what `vesa` here waits for. The settle after it covers Rio's own start-up.
+# THE MARKER IS TYPED IN A LOOP, BECAUSE THE MOMENT THE CONSOLE BECOMES A PROMPT IS NOT VISIBLE.
+#
+# THREE EARLIER VERSIONS TRIED TO GATE ON IT AND ALL THREE FAILED FOR THE SAME REASON: the console's
+# last lines are drawn at the BOTTOM of an 80x25 text screen that this OCR reads only partially, so a
+# gate on `monitor is` or `vesa` sees a frame that does not contain those rows even when they are on
+# screen:
+#
+#	error: none of "vesa" in "Ox0060e000 Ox1IcdbOOO 426561536 427139072 bytes free pcirouting: ..."
+#
+# - and the reading is truncated to the top of the screen, not to the state of the machine.
+#
+# SO THE LOOP DOES WHAT A PERSON WOULD: type the command, press Return, look for it echoed. If the
+# console was still a log the text is swallowed and the next attempt types it again; once init has
+# handed the console to `/bin/rc` the shell echoes it back and the loop stops. A command typed twice
+# prints the marker once more, which costs nothing.
+#
+# THE MARKER ITSELF IS THE WITNESS: `9front-livecd-reached-the-shell` is a string nothing else on this
+# screen produces, and it comes back only if a SHELL ran it.
+step "type the marker until the shell echoes it"
+  repeat
+    do
+      item
+        input text "echo 9front-livecd-reached-the-shell"
+      item
+        input ret
+      item
+        settle 8
+      item
+        read
+          name ok
+    until
+      source ok
+      mode text
+      rect [0, 0, 720, 400]
+      rect_at [720, 400]
+      scale 1
+      words [[9front-livecd-reached-the-shell]]
+    max 12
+
+step "record the desktop"
+  settle 20
