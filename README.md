@@ -2,12 +2,12 @@
 
 Walkthroughs and CI for operating systems that are not Linux, Windows, macOS, BSD or Android - today
 **Haiku**, **Redox OS**, **Debian GNU/Hurd**, **ToaruOS**, **Sculpt OS**, **ReactOS**,
-**KolibriOS**, **AROS**, **9front**, and Haiku's **32-bit** build beside its 64-bit one - driven by
+**KolibriOS**, **AROS** and **9front** - driven by
 [`easydev-org/easyvm`](https://github.com/easydev-org/easyvm).
 
 ## What lives here
 
-Nine systems, in two groups, and which group a guest is in is a finding rather than a preference.
+Eight systems, in two groups, and which group a guest is in is a finding rather than a preference.
 
 **Two have a real `install.walk`** - an installer that partitions a disk, copies a system and writes a
 boot sector, driven step by step:
@@ -15,8 +15,6 @@ boot sector, driven step by step:
 ```
 haiku/steps/install.walk       41 steps   DriveSetup: Intel map, BFS, then the Installer
 haiku/steps/smoke.walk          3 steps   boot the published disk, read the deskbar
-haiku32/steps/install.walk     41 steps   the same walk against the 32-bit medium
-haiku32/steps/smoke.walk        3 steps   boot the published 32-bit disk
 reactos/steps/install.walk     28 steps   the Setup Wizard, driven entirely by keyboard
 reactos/steps/smoke.walk        3 steps   boot the published disk, read the desktop
 ```
@@ -87,33 +85,6 @@ With `vgamem_mb=32`, SeaBIOS hands Haiku's VESA driver a mode table and the driv
 **1920x1080**; OVMF's GOP on the same card takes the largest mode that fits and lands on
 **3840x2160**. So the BIOS walk's coordinates are at their natural scale, and a UEFI variant of these
 files would need every one of them doubled.
-
-### The 32-bit build, beside the 64-bit one
-
-Haiku ships two anyboot images per release, and this repository carries both:
-
-```
-haiku/steps/install.walk     41 steps   x86_64     -> haiku-install
-haiku32/steps/install.walk   41 steps   x86_gcc2h  -> haiku32-install
-```
-
-**The two images are the same number of bytes** - MEASURED: 1,477,246,976 each - with different
-contents:
-
-| build | sha256 |
-| --- | --- |
-| x86_64 | `22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69` |
-| x86_gcc2h | `bd6d5015ce1d94ab2c3fa2f4f685491249938bde9acc55345f76098eb2ea424f` |
-
-Both are the values on haiku-os.org's own r1beta5 page. A size check could not tell them apart, so each
-row pins its digest.
-
-The 32-bit walk is **the same walk**, and that is measured rather than assumed: the Installer and
-DriveSetup are the same applications in both builds, drawn at the same size by the same VESA mode, so
-every coordinate lands where the 64-bit walk clicks. A 32-bit guest is accepted here - the architecture
-is not a reason to exclude a system, only a fact about the machine it needs.
-
-The two legs publish different tags because they produce different disks, and a stage pulls one.
 
 ### There is no `ssh` leg, and that is measured
 
@@ -590,7 +561,6 @@ Which tag each stage consumes:
 | KolibriOS | `iso-kolibrios-0.7.7.0` | - | smoke |
 | AROS | `iso-aros-202609` | - | smoke |
 | 9front | `iso-9front-11952` | - | smoke |
-| Haiku (32-bit) | `iso-haiku-r1beta5-x86` | `haiku32-install` | install -> smoke |
 
 `disk-redox-0.9.0-desktop` is a fact about the IMAGE and `redox-install` is what this repository's
 install produces; the smoke stage pulls the second, like every other guest here.
