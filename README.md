@@ -543,6 +543,7 @@ Which tag each stage consumes:
 | Sculpt OS | `disk-sculpt-26.10` | - | smoke |
 | KolibriOS | `iso-kolibrios-0.7.7.0` | - | smoke |
 | AROS | `iso-aros-202609` | - | smoke |
+| 9front | `iso-9front-11952` | - | smoke |
 
 `disk-redox-0.9.0-desktop` is a fact about the IMAGE and `redox-install` is what this repository's
 install produces; the smoke stage pulls the second, like every other guest here.
