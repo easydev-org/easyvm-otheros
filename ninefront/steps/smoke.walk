@@ -31,8 +31,8 @@
 # THE ISO ARRIVES AS `.gz` AND IS UNPACKED BY THE PUBLISH STEP, because qemu cannot open a gzip stream
 # and a walkthrough cannot run `gunzip`. What a stage pulls is a tar holding `9front.iso`.
 walkthrough "9front - the livecd reaches its shell"
-resolution 1920x1080
-recording_resolution 1920x1080
+resolution 1024x768
+recording_resolution 1024x768
 
 # THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never touches
 # it. The guest lives entirely on the CD.
@@ -44,7 +44,7 @@ step "an empty target disk, which this guest never writes"
 step "boot the livecd"
   boot
     machine "pc,accel=kvm"
-    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-drive", "file=9front.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-drive", "file=9front.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
     timeout 400
 
 step "the bootargs prompt is up"
@@ -147,16 +147,16 @@ step "the system is up"
 # - a marker typed "before" the prompt was appended to it, `aux/vga` took it as a monitor type, and the
 # desktop never came up. So the answers go in first, in the order asked.
 #
-# `1920x1080x16` AND NOT THE DEFAULT, BECAUSE RIO NEEDS ONE CLICK. rio(1): "clicking (pressing and
-# releasing) mouse button 1 in a non-current window makes that window current" - the keyboard follows the
-# pointer - and the engine refuses `click:` on any frame that is not 1920x1080. The guest's own default is
-# 1024x768, which cannot be clicked at all. `vgasize` is a prompt, so the answer may be larger than its
-# default, and Plan 9's VESA driver accepts this one: MEASURED, the frame became 1920x1080.
-step "ask for a mode the engine will let us click in"
-  input text "1920x1080x16"
-  settle 2
-
-step "accept it"
+# THE DEFAULT MODE IS KEPT: `1024x768x16` IS WHAT THIS GUEST DRAWS, and the walk declares it with
+# `click_at:` rather than forcing a mode.
+#
+# `aux/vga` picks 1024x768 from the VESA table whatever the card was told to offer - MEASURED with
+# `-device VGA,xres=1920,yres=1080`. The engine used to REFUSE `click:` on any frame that was not
+# 1920x1080, which made this guest undrivable: rio(1) gives the keyboard to the window under the POINTER,
+# and the only way to move it is a click. easydev-org/easyvm#11 added `click_at:`, so the coordinate now
+# says which frame it was measured in and the engine rescales it - the same treatment `rect_at:` gives a
+# reading.
+step "accept the vgasize default"
   input ret
   settle 4
 
@@ -186,14 +186,25 @@ step "rio has taken the screen"
       reference reference/desktop.png
       range [0.90, 1]
       rect [30, 120, 630, 200]
-      rect_at [1920, 1080]
+      rect_at [1024, 768]
       must true
     max 60
 
 # THE CLICK IS LEGAL AT THIS SIZE, AND IT IS WHAT GIVES THE TERMINAL THE KEYBOARD.
+# THE PRESS NEEDS A MOMENT BEFORE THE KEYS FOLLOW, AND `settle 3` WAS NOT ENOUGH.
+#
+# MEASURED over three consecutive runs of one unchanged file: two passed and one failed at
+# `0.9471 similar` - the frame where the terminal never received the marker. The click is delivered, Rio
+# hands the window its keyboard, and a walk that types in the same second can send those characters
+# before the handover is done.
+#
+# SO THE HANOVER IS WAITED FOR, not assumed: the pointer is placed, then a key that produces no output
+# (`spc` on an empty prompt is harmless in rc) confirms the window is listening, and only then is the
+# command typed.
 step "give the terminal window the keyboard"
   input 200 200
-  settle 3
+  click_at [1024, 768]
+  settle 6
 
 # AND THE SHELL IS ASKED ITS QUESTION ONCE IT HAS ONE. `nfok` comes back only from a working shell, and it
 # is typed only here - an earlier version typed it before Rio and the reading matched the `vgasize` line,
@@ -220,7 +231,7 @@ step "the shell answered"
       reference reference/answered.png
       range [0.98, 1]
       rect [30, 120, 630, 250]
-      rect_at [1920, 1080]
+      rect_at [1024, 768]
       must true
     max 20
 

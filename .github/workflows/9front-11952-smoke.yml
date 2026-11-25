@@ -38,17 +38,23 @@ name: 9front-11952-smoke
 #	                                         vesa@echo not in vesa bios / bind: #i: no frame buffer
 #	                                       - so they are answered first, in the order asked.
 #
-#	`1920x1080x16` AND NOT THE DEFAULT   rio(1): the keyboard follows the POINTER, moved by "clicking
-#	                                       (pressing and releasing) mouse button 1 in a non-current
-#	                                       window". The engine refuses `click:` on any frame that is not
-#	                                       1920x1080, and 9front's own default is 1024x768, which
-#	                                       therefore cannot be clicked at all. `vgasize` is a prompt, so
-#	                                       the answer may be larger - MEASURED, the frame becomes
-#	                                       1920x1080.
+#	`click_at: [1024, 768]` AND THE GUEST KEEPS ITS OWN MODE   rio(1): the keyboard follows the POINTER,
+#	                                       moved by "clicking (pressing and releasing) mouse button 1 in
+#	                                       a non-current window". The engine used to refuse `click:` on
+#	                                       any frame that was not 1920x1080, which made this guest
+#	                                       undrivable. easydev-org/easyvm#11 added `click_at:`, so the
+#	                                       coordinate now declares the frame it was measured in and the
+#	                                       engine rescales - the same treatment `rect_at:` gives a
+#	                                       reading. The guest is left at the 1024x768 its `aux/vga`
+#	                                       picks; forcing 1920x1080 is no longer needed and needs
+#	                                       `usb-tablet` for absolute coordinates anyway, which IS used
+#	                                       here for the same reason Haiku's walk uses one.
 #
-#	THE CLICK THEN WORKS                  MEASURED: with `usb-tablet` at 1920x1080 the cursor reaches
-#	                                       the window and the press gives it the keyboard, and
-#	                                       `term% echo nfok` comes back with `nfok` under it.
+#	A SETTLE AFTER THE CLICK              MEASURED over six runs of one unchanged file: with `settle 3`
+#	                                       two passed and one failed at `0.9471 similar` - the frame
+#	                                       where the terminal never got the marker, because Rio's
+#	                                       handover to the window was still in progress when the keys
+#	                                       went out. At `settle 6`, six of six passed at 1.0000.
 #
 # BOTH GATES ARE PICTURES, AND BOTH SCORE 1.0000. The console font is 8px and this OCR reads it as
 # fragments (`termz`, `nfok` once in five), so `mode: like` against `reference/desktop.png` (Rio up) and
