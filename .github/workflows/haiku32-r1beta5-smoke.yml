@@ -1,0 +1,55 @@
+name: haiku32-r1beta5-smoke
+
+# DOES THE PUBLISHED 32-BIT HAIKU DISK REACH ITS DESKTOP?
+#
+# The same claim `haiku-r1beta5-smoke.yml` makes, against the disk `haiku32-r1beta5-install.yml`
+# publishes. Separate files because they verify separate tags: a stage pulls ONE disk, and
+# `haiku32-install` is not `haiku-install`.
+#
+# IT PUBLISHES NO DISK. `out:` is empty, so stage.yml reports "no disk to publish" and the artifact is
+# the recording. The disk it verifies is the one the install leg already pushed, so a smoke run cannot
+# overwrite what it is testing.
+#
+# BIOS, NO pflash, `bootindex=0` on the ide-hd - the disk is an MBR with `bios_ia32/stage1` in its
+# first sector, so there is no ESP to find and no firmware entry to name.
+#
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: >-
+          the PUBLISHED disk to boot. Empty uses the tag this repository's install leg publishes.
+        default: "haiku32-install"
+      disks_repository:
+        description: "the ghcr repository that holds the disk"
+        default: "easydev-org/easyvm-otheros"
+
+concurrency:
+  group: haiku32-r1beta5-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "20"
+      group: haiku32-r1beta5-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "haiku32-smoke",
+            "file": "haiku32/steps/smoke.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "",
+            "timeout": 20
+          }
+        ]

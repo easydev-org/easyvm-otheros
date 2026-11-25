@@ -147,6 +147,16 @@ jobs:
           # THE DIGEST BELOW IS OF THE `.gz` AS PUBLISHED, so the compressed file is what is checked -
           # `9front.org/iso/` names the build in the filename, and this is build 11952.
           - { tag: "iso-9front-11952", group: "others", url: "https://9front.org/iso/9front-11952.amd64.iso.gz", sha: "59ba79f1304f02c1aae573b337fa2569fc78027ce8e4c2056c4117e971025b91", size: "250764788" }
+          # THE 32-BIT HAIKU, BESIDE THE 64-BIT ONE. Both are anyboot images from the same release, and
+          # they are the SAME NUMBER OF BYTES with different contents - MEASURED: 1,477,246,976 each,
+          # digests 22ae312a... (x86_64) and bd6d5015... (x86_gcc2h), which are exactly the two values
+          # on haiku-os.org's own r1beta5 download page. A size check alone could not tell them apart,
+          # which is why this row pins the digest of the 32-bit file.
+          #
+          # IT IS A SEPARATE ROW AND A SEPARATE TAG because it produces a separate disk: a 32-bit guest
+          # is a different machine, and the two install legs publish `haiku-install` and
+          # `haiku32-install` independently.
+          - { tag: "iso-haiku-r1beta5-x86", group: "others", url: "https://mirrors.osuosl.org/pub/haiku/r1beta5/haiku-r1beta5-x86_gcc2h-anyboot.iso", sha: "bd6d5015ce1d94ab2c3fa2f4f685491249938bde9acc55345f76098eb2ea424f", size: "1477246976" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty

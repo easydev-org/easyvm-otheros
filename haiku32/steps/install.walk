@@ -1,0 +1,244 @@
+# INSTALL 32-BIT HAIKU (x86_gcc2h) ONTO A WHOLE DISK, THROUGH ITS OWN INSTALLER, AND PUBLISH IT.
+#
+# THIS IS THE SAME WALK AS `haiku/steps/install.walk` AGAINST THE OTHER MEDIUM, AND THE DIFFERENCE IS
+# WORTH PUBLISHING RATHER THAN ASSUMING. Haiku ships two anyboot images per release:
+#
+#	x86_64      the 64-bit build, gcc 13 - `haiku-r1beta5-x86_64-anyboot.iso`
+#	x86_gcc2h   the 32-bit hybrid, gcc 2.95 + 13 - `haiku-r1beta5-x86_gcc2h-anyboot.iso`
+#
+# and a 32-bit guest is accepted here: the architecture is not a reason to exclude a system, only a fact
+# about the machine it needs.
+#
+# THE TWO IMAGES ARE THE SAME SIZE AND THAT IS NOT A COPY MISTAKE. MEASURED: both are 1,477,246,976
+# bytes, with digests
+#
+#	x86_64     22ae312a38e98083718b6984186e753d15806bd6ea44542144fdcef42c4dcb69
+#	x86_gcc2h  bd6d5015ce1d94ab2c3fa2f4f685491249938bde9acc55345f76098eb2ea424f
+#
+# which are the two values on haiku-os.org's own r1beta5 download page. Same length, different bytes.
+#
+# EVERY COORDINATE BELOW IS THE 64-BIT WALK'S, AND THAT IS MEASURED RATHER THAN COPIED AND HOPED. The
+# Installer and DriveSetup are the same applications in both builds, drawn at the same size by the same
+# VESA mode: MEASURED, this image reaches the identical `Welcome to Haiku!` dialog at 1920x1080 and
+# every click lands where the 64-bit walk clicks.
+#
+# SO WHY TWO FILES RATHER THAN ONE WITH A VARIABLE: they publish two different disks, and a stage pulls
+# one tag. Keeping them apart is what lets `haiku32-install` and `haiku-install` be independent
+# artifacts - and it is the same split this repository already makes between a medium and a disk.
+
+walkthrough "haiku r1beta5 (32-bit) - install to a be file system on a whole disk"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+var out
+  default out/haiku.qcow2
+  from args.out
+
+step "create the empty disk"
+  disk
+    file disk.qcow2
+    size 20
+
+step "boot the installer"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-m", "4096"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file=haiku32.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ahci.1,bootindex=0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=1"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
+    timeout 900
+
+# THE WELCOME DIALOG ARRIVES ABOUT THIRTY-FIVE SECONDS AFTER THE FIRMWARE HANDS OVER, and a click
+# sent before it exists lands on the wallpaper - MEASURED, an install walked past this point clicked
+# `Try Haiku`'s position on a live desktop and produced a 193 KiB disk with nothing on it. Waiting for
+# the words is the fix.
+#
+# THE WORDS ARE FROM THE DIALOG'S BODY, NOT ITS TITLE, AND THAT IS MEASURED. `Welcome to Haiku!` is
+# drawn in a yellow title tab and tesseract DROPS IT ENTIRELY from this crop: the reading of the
+# correct rectangle began at `Esperanto` and ran on through `Thank you for trying out Haiku!`, so a
+# `words: [[welcome]]` gate could never fire and the loop sat out all sixty attempts. `thank` and
+# `trying` come from the sentence and `language`/`keymap` from the two section labels - each is a
+# plain word in a plain font on a white background, which is what this OCR is good at.
+step "the welcome dialog is up"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name welcome
+    until
+      source welcome
+      mode text
+      rect [600, 280, 1330, 770]
+      rect_at [1920, 1080]
+      scale 1
+      words [[thank, trying, haiku], [language, keymap]]
+    max 60
+
+step "install haiku"
+  input 1100 711
+  settle 8
+
+step "continue past the welcome"
+  input 1215 745
+  settle 6
+
+step "ok the language notice"
+  input 1075 518
+  settle 3
+
+step "set up partitions"
+  input 730 644
+  settle 8
+
+step "pick the hard disk"
+  input 900 497
+  settle 2
+
+step "open the disk menu"
+  input 480 305
+  settle 2
+
+step "move to initialize"
+  input down
+  settle 1
+
+step "open the initialize submenu"
+  input right
+  settle 2
+
+# THE SECOND ENTRY IS INTEL PARTITION MAP. See the header: the first is GUID, and GUID produces a
+# disk SeaBIOS will not boot.
+step "intel partition map - the map bios_ia32 stage1 boots"
+  input down
+  settle 1
+
+step "choose it"
+  input ret
+  settle 4
+
+step "confirm the initialization"
+  input 1012 479
+  settle 4
+
+step "write the partition map"
+  input 968 492
+  settle 6
+
+step "ok the new empty space"
+  input 1080 443
+  settle 3
+
+step "select the empty space"
+  input 700 511
+  settle 2
+
+step "open the partition menu"
+  input 545 305
+  settle 2
+
+step "move to create"
+  input down
+  settle 1
+
+step "create the partition"
+  input ret
+  settle 5
+
+step "name it haiku"
+  input 1005 552
+  settle 1
+
+step "type the name"
+  input text "Haiku"
+  settle 1
+
+step "create it"
+  input 1056 630
+  settle 5
+
+step "write the changes"
+  input 937 478
+  settle 6
+
+step "select the new partition"
+  input 705 511
+  settle 2
+
+step "open the partition menu again"
+  input 545 305
+  settle 2
+
+step "move to format"
+  input down
+  settle 1
+
+step "open the format submenu"
+  input right
+  settle 2
+
+step "be file system"
+  input ret
+  settle 4
+
+step "confirm the format"
+  input 985 462
+  settle 4
+
+step "do the format"
+  input 1040 597
+  settle 6
+
+step "write the format"
+  input 937 478
+  settle 8
+
+step "close the format result"
+  input 1074 463
+  settle 3
+
+step "back to the installer"
+  input alt+w
+  settle 3
+
+step "choose the target"
+  input 863 558
+  settle 3
+
+step "pick the bfs volume"
+  input 950 565
+  settle 3
+
+step "begin"
+  input 1187 659
+  settle 20
+
+# THE INSTALLER SAYS `Installation completed. Boot sector has been written to 'Haiku'.` and the disk
+# is about 719 MiB. Reading for the sentence is what separates a finished install from one whose
+# `Begin` click was swallowed.
+step "the installation completed"
+  repeat
+    do
+      item
+        wait 5
+      item
+        read
+          name done
+    until
+      source done
+      mode text
+      rect [620, 400, 1300, 780]
+      rect_at [1920, 1080]
+      scale 1
+      words [[installation, completed]]
+    max 120
+
+# A POWER BUTTON, NOT A KILL. See the header: this is what makes the published disk bootable.
+step "press the guest's power button"
+  acpi power
+  settle 5
+
+step "wait for the guest to shut down, so be file system commits its journal"
+  wait_until stopped
+  timeout 180
+
+step "publish the disk"
+  save "{{ out }}"

@@ -1,0 +1,56 @@
+# DOES THE PUBLISHED 32-BIT HAIKU DISK REACH ITS DESKTOP? Boot it with no ISO, read the deskbar, stop.
+#
+# THE SAME WALK AS `haiku/steps/smoke.walk` AGAINST A DIFFERENT DISK, and it is a separate file for the
+# same reason the install legs are separate: a stage pulls ONE tag, and `haiku32-install` and
+# `haiku-install` are two artifacts from two media.
+#
+# THE CLAIM IS THE ONE AN INSTALL LEG CANNOT MAKE. Haiku's installer can answer every step, report
+# `Installation completed. Boot sector has been written to 'Haiku'.`, and still publish a disk that no
+# firmware boots - MEASURED here twice: a GUID partition map gives a protective MBR with no active
+# 0xEB partition (`No bootable device`), and a `stop kill` gives a BFS whose journal was never replayed
+# (`bios_ia32 stage1: Failed to load OS`). Both are fixed where the disk is made; this file is what
+# proves it, by booting the result with the medium absent.
+#
+# BIOS AND NO pflash, because that is the path 32-bit Haiku installs to: its boot sector is an MBR and
+# the loader is `bios_ia32/stage1`, so `bootindex=0` on the `ide-hd` is the whole instruction. 1920x1080
+# is a consequence of SeaBIOS plus `vgamem_mb=32`, not a choice.
+#
+# THE WITNESS IS THE DESKBAR, read as text: `Haiku` and `Tracker` are drawn by the installed system's
+# own deskbar, so reading them is the claim that the install is a running OS rather than a boot sector.
+# The whole frame is read rather than a strip of it - MEASURED: `rect [0, 0, 1920, 60]` reads as
+# `oc we OM 205m` and never matches, while the same frame read whole yields
+# `Haiku BeBook home Quick Tour User Guide Trash`.
+walkthrough "the published 32-bit haiku disk reaches its desktop"
+resolution 1920x1080
+recording_resolution 1920x1080
+
+step "boot the published disk"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-m", "4096"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "usb-kbd,bus=uhci.0"], ["-device", "ich9-ahci,id=ahci"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "ide-hd,drive=target,bus=ahci.0,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "e1000,netdev=net0,mac=52:54:00:56:4d:01"]]
+    timeout 600
+
+# THE DESKBAR IS SMALL TEXT AT 12 PX, so this reads the WHOLE frame rather than a strip of it.
+# MEASURED: `rect [0, 0, 1920, 60]` - the top sixty rows - read as `oc we OM 205m` and never matched,
+# while the same frame read whole yields `Haiku BeBook home Quick Tour User Guide Trash`. `rect_at`
+# and `scale` are not optional: an `until:` with `mode: text` measures a REGION, and a region-less
+# reading is refused by the engine with "a picture with no region has nothing to ask about".
+step "the desktop is up"
+  repeat
+    do
+      item
+        wait 10
+      item
+        read
+          name desk
+    until
+      source desk
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      scale 1
+      words [[haiku], [tracker]]
+    max 60
+
+step "record the desktop"
+  settle 30
