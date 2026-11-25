@@ -48,7 +48,7 @@ jobs:
     # accelerator; `/dev/net/tun` and NET_ADMIN are the tap the NIC is attached to. Without KVM the
     # install runs at TCG speed and the walk's settled waits become guesses.
     container:
-      image: ghcr.io/easydev-org/easyvm:v0.0.3-dev
+      image: ghcr.io/easydev-org/easyvm:v0.0.4
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

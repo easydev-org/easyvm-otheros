@@ -81,11 +81,11 @@ permissions:
 
 jobs:
   smoke:
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.4
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
-      image_tag: v0.0.3-dev
+      image_tag: v0.0.4
       disk_gb: "20"
       group: 9front-11952-smoke
       disks_repository: ${{ inputs.disks_repository }}
