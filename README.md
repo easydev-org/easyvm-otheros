@@ -86,6 +86,23 @@ With `vgamem_mb=32`, SeaBIOS hands Haiku's VESA driver a mode table and the driv
 **3840x2160**. So the BIOS walk's coordinates are at their natural scale, and a UEFI variant of these
 files would need every one of them doubled.
 
+### There is no `ssh` leg, and that is measured
+
+The Linux guests here each have `install` -> `ssh` -> `vm-configure`. Haiku has none of those, and the
+reason is not that nobody wrote one:
+
+MEASURED on a published `haiku-install` disk, booted with the NIC it was installed with, a step that
+runs `ssh "uname -a"` fails at the connection:
+
+```
+ask it what it is: dial tcp 172.30.0.1:2222: connect: no route to host
+```
+
+Haiku does not start `sshd` on an installed system - it is not enabled by default and nothing in the
+installer turns it on. A `ssh` leg would therefore have to add a first step that starts it from the
+desktop (a Terminal window and `sshd`), which is a step that tests the terminal rather than the system.
+The smoke leg's deskbar reading is the stronger claim for the cost.
+
 ### The OCR reads the dialog's body, not its title
 
 `Welcome to Haiku!` is drawn in a yellow title tab and tesseract **drops it entirely** from the
