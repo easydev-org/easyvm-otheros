@@ -250,6 +250,25 @@ jobs:
               out="${src%.zst}"
               echo "decompressed $(basename "$src") -> $(basename "$out")"
               ;;
+            *.gz)
+              # 9FRONT PUBLISHES ITS LIVECD AS `.iso.gz` AND NOTHING ELSE, the same shape Redox's
+              # `.iso.zst` takes and for the same reason: qemu cannot open a compressed stream, and a
+              # walkthrough cannot run `gunzip` because preparation is not a guest action.
+              #
+              # MEASURED ON RUN 45517770885, WHICH IS WHY THIS CASE EXISTS: without it the tar that
+              # reached a stage held `9front-11952.amd64.iso.gz`, `stage.yml` renamed it to
+              # `9front.iso` (its rename is by NAME, not by content), and qemu answered
+              #
+              #	Booting from Floppy... Boot failed: could not read the boot disk
+              #
+              # - the CD was a gzip stream, so the firmware found no El Torito catalog and tried the
+              # next device.
+              gzip -dc "$src" > "${src%.gz}"
+              [ -s "${src%.gz}" ] || { echo "::error::gunzip of $src produced nothing"; exit 1; }
+              out="${src%.gz}"
+              rm -f "$src"
+              echo "decompressed $(basename "$src") -> $(basename "$out") ($(stat -c %s "$out") bytes)"
+              ;;
             *.zip)
               # REACTOS SHIPS ITS INSTALLER AS A ZIP, AND THE ISO INSIDE IS THE MEDIUM. The same
               # argument as the zstd case: qemu cannot open a zip, and unpacking it is preparation.
