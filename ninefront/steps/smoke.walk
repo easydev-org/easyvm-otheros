@@ -31,8 +31,8 @@
 # THE ISO ARRIVES AS `.gz` AND IS UNPACKED BY THE PUBLISH STEP, because qemu cannot open a gzip stream
 # and a walkthrough cannot run `gunzip`. What a stage pulls is a tar holding `9front.iso`.
 walkthrough "9front - the livecd reaches its shell"
-resolution 1024x768
-recording_resolution 1024x768
+resolution 1920x1080
+recording_resolution 1920x1080
 
 # THE ENGINE REFUSES A `boot:` WITH NO TARGET DISK, so this file creates an empty one and never touches
 # it. The guest lives entirely on the CD.
@@ -44,7 +44,7 @@ step "an empty target disk, which this guest never writes"
 step "boot the livecd"
   boot
     machine "pc,accel=kvm"
-    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "VGA,xres=1024,yres=768,vgamem_mb=16"], ["-drive", "file=9front.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "2"], ["-m", "1024"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "isa-serial,chardev=qga0"], ["-device", "piix3-usb-uhci,id=uhci"], ["-device", "usb-tablet,bus=uhci.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-drive", "file=9front.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bus=ide.1,bootindex=0"], ["-netdev", "user,id=net0"], ["-device", "rtl8139,netdev=net0"]]
     timeout 400
 
 step "the bootargs prompt is up"
@@ -133,44 +133,96 @@ step "the system is up"
 # so the console was a log, not a prompt, and the text was swallowed. `monitor is` is the last half of
 # that same `vgasize` sentence and IS read once Rio takes the screen, followed by a cursor - which is
 # what `vesa` here waits for. The settle after it covers Rio's own start-up.
-# THE MARKER IS TYPED IN A LOOP, BECAUSE THE MOMENT THE CONSOLE BECOMES A PROMPT IS NOT VISIBLE.
+# THE TWO QUESTIONS `screenrc` ASKS ARE ANSWERED FIRST, AND THE `vgasize` ANSWER IS A MODE.
 #
-# THREE EARLIER VERSIONS TRIED TO GATE ON IT AND ALL THREE FAILED FOR THE SAME REASON: the console's
-# last lines are drawn at the BOTTOM of an 80x25 text screen that this OCR reads only partially, so a
-# gate on `monitor is` or `vesa` sees a frame that does not contain those rows even when they are on
-# screen:
+# THEY CANNOT BE AVOIDED. `cfg/plan9.ini` on the CD says `vgasize=ask` and `monitor=ask`, and `screenrc`
+# asks them the instant rc reaches that line - there is no gap after `starting dns resolver` in which to
+# type anything else. MEASURED, twice, and the guest said so itself:
 #
-#	error: none of "vesa" in "Ox0060e000 Ox1IcdbOOO 426561536 427139072 bytes free pcirouting: ..."
+#	vgasize is (text, 640x480x8, 1024x768x16, ...) [1024x768x16] echo nfok
+#	aux/vga: main: vesa@echo not in vesa bios
+#	bind: #i: no frame buffer
+#	rio: can't open display
 #
-# - and the reading is truncated to the top of the screen, not to the state of the machine.
+# - a marker typed "before" the prompt was appended to it, `aux/vga` took it as a monitor type, and the
+# desktop never came up. So the answers go in first, in the order asked.
 #
-# SO THE LOOP DOES WHAT A PERSON WOULD: type the command, press Return, look for it echoed. If the
-# console was still a log the text is swallowed and the next attempt types it again; once init has
-# handed the console to `/bin/rc` the shell echoes it back and the loop stops. A command typed twice
-# prints the marker once more, which costs nothing.
-#
-# THE MARKER ITSELF IS THE WITNESS: `9front-livecd-reached-the-shell` is a string nothing else on this
-# screen produces, and it comes back only if a SHELL ran it.
-step "type the marker until the shell echoes it"
+# `1920x1080x16` AND NOT THE DEFAULT, BECAUSE RIO NEEDS ONE CLICK. rio(1): "clicking (pressing and
+# releasing) mouse button 1 in a non-current window makes that window current" - the keyboard follows the
+# pointer - and the engine refuses `click:` on any frame that is not 1920x1080. The guest's own default is
+# 1024x768, which cannot be clicked at all. `vgasize` is a prompt, so the answer may be larger than its
+# default, and Plan 9's VESA driver accepts this one: MEASURED, the frame became 1920x1080.
+step "ask for a mode the engine will let us click in"
+  input text "1920x1080x16"
+  settle 2
+
+step "accept it"
+  input ret
+  settle 4
+
+# `mouseport` IS A THIRD PROMPT, AND IT COMES AFTER THE OTHER TWO - MEASURED in the guest's own words:
+# `mouseport is (ps2, ps2intellimouse, 0, 1, 2) [ps2]`. Its default is right.
+step "take the monitor default"
+  input ret
+  settle 4
+
+step "take the mouseport default"
+  input ret
+  settle 10
+
+# RIO DRAWS A GREY ROOT AND A `term%` WINDOW. `term` is in the window's first line, so it is the gate that
+# says the window system is up rather than the shell.
+step "rio has taken the screen"
   repeat
     do
       item
-        input text "echo 9front-livecd-reached-the-shell"
+        wait 5
       item
-        input ret
+        read
+          name rio
+    until
+      source rio
+      mode like
+      reference reference/desktop.png
+      range [0.90, 1]
+      rect [30, 120, 630, 200]
+      rect_at [1920, 1080]
+      must true
+    max 60
+
+# THE CLICK IS LEGAL AT THIS SIZE, AND IT IS WHAT GIVES THE TERMINAL THE KEYBOARD.
+step "give the terminal window the keyboard"
+  input 200 200
+  settle 3
+
+# AND THE SHELL IS ASKED ITS QUESTION ONCE IT HAS ONE. `nfok` comes back only from a working shell, and it
+# is typed only here - an earlier version typed it before Rio and the reading matched the `vgasize` line,
+# which was a gate that could not tell a working system from a swallowed keystroke.
+step "ask the shell a question only a running system can answer"
+  input text "echo nfok"
+  settle 1
+
+step "run it"
+  input ret
+  settle 6
+
+step "the shell answered"
+  repeat
+    do
       item
-        settle 8
+        wait 4
       item
         read
           name ok
     until
       source ok
-      mode text
-      rect [0, 0, 720, 400]
-      rect_at [720, 400]
-      scale 1
-      words [[9front-livecd-reached-the-shell]]
-    max 12
+      mode like
+      reference reference/answered.png
+      range [0.98, 1]
+      rect [30, 120, 630, 250]
+      rect_at [1920, 1080]
+      must true
+    max 20
 
 step "record the desktop"
   settle 20
